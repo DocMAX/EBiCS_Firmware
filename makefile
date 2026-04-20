@@ -44,6 +44,7 @@ LishuiFOC_01.elf: $(OBJS) $(USER_OBJS) STM32F103C6Tx_FLASH_Bootloader.ld
 # Other Targets
 clean:
 	-$(RM) build/*
+	-$(RM) output/*
 	-@echo ' '
 
 post-build:
@@ -53,6 +54,15 @@ post-build:
 	arm-none-eabi-size "build/EBiCS_Firmware.elf"
 	stat "build/EBiCS_Firmware.bin"
 	-@echo ' '
+	mkdir -p output
+	java -cp java make/hexToLsh.java
+	-@echo 'Firmware processing completed'
+
+
+.PHONY: all clean dependents
+.SECONDARY: post-build
+
+-include makefile.targets
 
 
 .PHONY: all clean dependents
