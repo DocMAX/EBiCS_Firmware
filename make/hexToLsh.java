@@ -38,7 +38,9 @@ public class hexToLsh {
       
       String folderName = "output";
       Path path = Paths.get(folderName);
-      Files.createDirectory(path);
+      if (!Files.exists(path)) {
+        Files.createDirectory(path);
+      }
       File from = new File("Inc/config.h");
       File to = new File("output/config.h");
       Files.copy(from.toPath(), to.toPath());
