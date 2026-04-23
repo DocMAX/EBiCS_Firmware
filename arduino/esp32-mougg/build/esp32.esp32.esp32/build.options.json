@@ -1,0 +1,9 @@
+{
+  "additionalFiles": "../..",
+  "compiler.optimization_flags": "-Os",
+  "customBuildProperties": "",
+  "fqbn": "esp32:esp32:esp32",
+  "hardwareFolders": "/home/docmax/.arduino15/packages/esp32/hardware/esp32/3.3.7,/home/docmax/.arduino15/packages/esp32/hardware/esp32/3.3.7",
+  "otherLibrariesFolders": "/home/docmax/Arduino/libraries",
+  "sketchLocation": "/home/docmax/syncthing/github/EBiCS_Firmware/arduino/esp32-mougg"
+}
