@@ -5,6 +5,7 @@ import socket
 import select
 import signal
 import argparse
+import struct
 import subprocess
 from tqdm import tqdm
 
@@ -22,6 +23,24 @@ def drain(sock):
     ready, _, _ = select.select([sock], [], [], 0)
     if ready:
         sock.recv(4096)
+
+
+def background_recv(sock, buf_size=65536):
+    """
+    Pre-drain incoming data into a socket buffer before each send.
+    This prevents TCP window fill-up which causes send() to block
+    when the device sends ACK/echo data faster than the network
+    can carry it back to the host.
+    """
+    # Continuously drain until no more data is available
+    while True:
+        ready, _, _ = select.select([sock], [], [], 0.001)
+        if not ready:
+            break
+        try:
+            sock.recv(buf_size)
+        except socket.timeout:
+            break
 
 def recv_until(sock, marker, timeout=30, verbose=False):
     response = b""
@@ -48,6 +67,7 @@ try:
     parser.add_argument("lsh_file")
     parser.add_argument("-v", "--verbose", action="store_true")
     parser.add_argument("-d", "--delay", type=float, default=0.0042, help="Delay between lines in seconds (default: 0.0042s to match serial speed at 38400 baud)")
+    parser.add_argument("-w", "--wifi-margin", type=float, default=0.001, help="Extra margin for TCP jitter in seconds (default: 0.001s)")
     parser.add_argument("-t", "--timing", action="store_true", help="Show timing details for comparison with serial flasher")
     args = parser.parse_args()
 
@@ -66,8 +86,10 @@ try:
     uart = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     # Disable Nagle's algorithm - critical for timing-sensitive flashing
     uart.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
-    # Small send buffer to prevent kernel buffering delays
-    uart.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, 4096)
+    # Larger send buffer for wifi buffering - prevents stalling during bursts
+    uart.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, 16384)
+    # Enable linger to avoid hangs on close
+    uart.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, struct.pack('ii', 1, 0))
     uart.settimeout(30)
 
     print(f"Checking if {ip_address} is reachable...")
@@ -112,6 +134,8 @@ try:
             t0 = time.time()
             
         # Send entire line at once (like serial does - hardware handles FIFO)
+        # Pre-drain incoming ACK/echo data to prevent TCP window fill-up
+        background_recv(uart)
         uart.sendall(data)
         
         if show_timing:
@@ -121,11 +145,12 @@ try:
         drain(uart)
 
         # Wait exactly the time it takes to transmit one line at 38400 baud
-        time.sleep(args.delay)
+        # Add wifi margin to account for TCP retransmission jitter
+        time.sleep(args.delay + args.wifi_margin)
 
         # Extra delay every 64 lines like serial flush()
         if (i % 64) == 0:
-            time.sleep(0.03)
+            time.sleep(0.03 + args.wifi_margin)
 
     total_time = (time.time() - total_start) * 1000
     

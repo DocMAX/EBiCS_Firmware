@@ -20,6 +20,7 @@ Debug
 /Release/
 /build/
 /output/
+/temp/
 
 # Configuration files
 config.h

@@ -62,7 +62,7 @@ case $MODE in
         python3 ./serial_flasher.py "$TARGET" ../output/EBiCS_Firmware.lsh
         ;;
     telnet)
-        python3 ./telnet_flasher.py "$TARGET" ../output/EBiCS_Firmware.lsh -d 0.01
+        python3 ./telnet_flasher.py "$TARGET" ../output/EBiCS_Firmware.lsh -d 0.005
         ;;
     esp32-ota)
         if [ "$BUILD" = "1" ]; then
