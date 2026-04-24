@@ -39,6 +39,8 @@ uint16_t frameLen = 0;
 bool     displayDisabled = false;
 bool     flasherInit = false;
 uint32_t lastReconnect = 0;
+bool     debugEnabledOnSTM32 = false;
+static bool lastDebugConnected = false;
 
 uint8_t  buf[4096];
 
@@ -146,6 +148,7 @@ void loop() {
       displayDisabled = true;
       flasherInit = true;
       lastFlasherState = true;
+      lastDebugConnected = false; // Reset debug state during flashing
       while (SerialController.available()) SerialController.read();
       SerialController.flush();
     }
@@ -195,6 +198,34 @@ void loop() {
   handleClient(serverUart2, clientUart2);
   handleClient(serverDebug, clientDebug);
 
+  // Detect Debug port connection state
+  bool currentDebugConnected = clientDebug.connected();
+  
+  // Unique 4-byte control sequences to avoid false triggers
+  // These are unlikely to appear in normal display protocol data
+  const uint8_t DEBUG_ENABLE_SEQ[] = {0xDE, 0xAD, 0xBE, 0xEF};
+  const uint8_t DEBUG_DISABLE_SEQ[] = {0xDE, 0xAD, 0xBE, 0xEE};
+  
+  if (currentDebugConnected && !lastDebugConnected) {
+      // Connected — enable debug on STM32
+      // Send multiple times to ensure it gets through
+      for (int i = 0; i < 5; i++) {
+          SerialController.write(DEBUG_ENABLE_SEQ, 4);
+          delay(20);
+      }
+      debugEnabledOnSTM32 = true;
+  }
+  if (!currentDebugConnected && lastDebugConnected) {
+      // Disconnected — disable debug on STM32
+      // Send multiple times to ensure it gets through
+      for (int i = 0; i < 5; i++) {
+          SerialController.write(DEBUG_DISABLE_SEQ, 4);
+          delay(20);
+      }
+      debugEnabledOnSTM32 = false;
+  }
+  lastDebugConnected = currentDebugConnected;
+
   // Helper: extract frames delimited by CRLF, send with label - process ALL frames
   auto emitFrames = [&](uint8_t* pb, int& pp, WiFiClient& cl, const char* lbl, int cap) {
     int processed = 0;
@@ -230,23 +261,43 @@ void loop() {
     emitFrames(displayBuf, displayPos, clientUart1, "TX: ", 256);
   }
 
-  // PRIORITY 2: Controller → Display (Controller responds)
-  pos = 0;
-  while (SerialController.available() && pos < 32) buf[pos++] = SerialController.read();
-  if (pos > 0) {
-    if (!displayDisabled) {
-      if (!flasherInit) {
-        SerialDisplay.write(buf, pos);
-        for (int i = 0; i < pos; i++) if (ctrlToDispEchoPos < sizeof(ctrlToDispEchoBuf)) ctrlToDispEchoBuf[ctrlToDispEchoPos++] = buf[i];
-        emitFrames(ctrlToDispEchoBuf, ctrlToDispEchoPos, clientUart1, "RX: ", sizeof(ctrlToDispEchoBuf));
-      }
-    }
-    if (!flasherInit) SerialBattery.write(buf, pos);
-    for (int i = 0; i < pos; i++) {
-      if (ctrlRxPos < sizeof(ctrlRxBuf)) ctrlRxBuf[ctrlRxPos++] = buf[i];
-    }
-    emitFrames(ctrlRxBuf, ctrlRxPos, clientUart0, "TX: ", 2048);
-  }
+   // PRIORITY 2: Controller → Display (Controller responds)
+   pos = 0;
+   while (SerialController.available() && pos < 32) buf[pos++] = SerialController.read();
+   if (pos > 0) {
+     if (!displayDisabled) {
+       if (!flasherInit) {
+         SerialDisplay.write(buf, pos);
+         for (int i = 0; i < pos; i++) if (ctrlToDispEchoPos < sizeof(ctrlToDispEchoBuf)) ctrlToDispEchoBuf[ctrlToDispEchoPos++] = buf[i];
+         emitFrames(ctrlToDispEchoBuf, ctrlToDispEchoPos, clientUart1, "RX: ", sizeof(ctrlToDispEchoBuf));
+       }
+     }
+     if (!flasherInit) SerialBattery.write(buf, pos);
+     for (int i = 0; i < pos; i++) {
+       if (ctrlRxPos < sizeof(ctrlRxBuf)) ctrlRxBuf[ctrlRxPos++] = buf[i];
+     }
+     emitFrames(ctrlRxBuf, ctrlRxPos, clientUart0, "TX: ", 2048);
+     // Forward debug data to debug client on port 1003 (skip KingMeter protocol frames)
+     if (clientDebug && clientDebug.connected()) {
+       static uint8_t skipBytes = 0;
+       for (int i = 0; i < pos; i++) {
+         if (skipBytes > 0) {
+           // Skip this byte (part of KingMeter frame)
+           skipBytes--;
+         } else if (buf[i] == 0x3A) {
+           // Start of KingMeter frame detected (0x3A)
+           // Skip this byte and the rest of the frame
+           // KingMeter 901U frames are max 13 bytes total
+           // So skip up to 12 more bytes after 0x3A
+           skipBytes = 12;
+           // Don't forward the 0x3A byte
+         } else {
+           // Not part of a KingMeter frame, forward the byte
+           clientDebug.write(buf[i]);
+         }
+       }
+     }
+   }
 
   // LOWER PRIORITY: Battery traffic
   pos = 0;

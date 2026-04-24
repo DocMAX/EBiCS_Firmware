@@ -152,6 +152,7 @@ volatile uint8_t ui8_SPEED_flag=0;
 volatile uint8_t ui8_SPEED_control_flag=0;
 volatile uint8_t ui8_BC_limit_flag=0;  //flag for Battery current limitation
 volatile uint8_t ui8_6step_flag=0;
+volatile uint8_t g_telnet_debug = 0;
 int16_t i16_60deg_Hall_flag=0;
 uint32_t uint32_PAS_counter= PAS_TIMEOUT+1;
 uint32_t uint32_PAS_HIGH_counter= 0;
@@ -686,6 +687,25 @@ int main(void)
 	  }*/
 		//display message processing
 		if(ui8_UART_flag){
+			// Check for telnet debug toggle sequences (4-byte sequences)
+			// Unique sequences to avoid false triggers in normal protocol data
+			// Enable sequence: 0xDE 0xAD 0xBE 0xEF
+			// Disable sequence: 0xDE 0xAD 0xBE 0xEE
+			// Scan the entire DMA buffer to find any toggle sequences
+			uint16_t i;
+			for (i = 0; i < (sizeof(KM.RxBuff) - 3); i++) {
+				// Check for enable sequence
+				if (KM.RxBuff[i] == 0xDE && KM.RxBuff[i+1] == 0xAD && 
+					KM.RxBuff[i+2] == 0xBE && KM.RxBuff[i+3] == 0xEF) {
+					g_telnet_debug = 1;
+				}
+				// Check for disable sequence
+				if (KM.RxBuff[i] == 0xDE && KM.RxBuff[i+1] == 0xAD && 
+					KM.RxBuff[i+2] == 0xBE && KM.RxBuff[i+3] == 0xEE) {
+					g_telnet_debug = 0;
+				}
+			}
+
 #if (DISPLAY_TYPE == DISPLAY_TYPE_KINGMETER_901U||DISPLAY_TYPE & DISPLAY_TYPE_DEBUG)
 
 			KingMeter_Service(&KM);
@@ -1165,8 +1185,9 @@ int main(void)
 				else if(ui8_6step_flag) SystemState = SixStep;
 				else SystemState = Running;
 
-#if (DISPLAY_TYPE == DISPLAY_TYPE_DEBUG && !defined(FAST_LOOP_LOG))
-				//print values for debugging
+#if !defined(FAST_LOOP_LOG)
+			if ((DISPLAY_TYPE == DISPLAY_TYPE_DEBUG || g_telnet_debug))
+			{ //print values for debugging
 
 				sprintf_(buffer, "%d, %d, %d, %d, %d, %d, %d, %d, %d\r\n",
 						adcData[1],
@@ -1183,11 +1204,12 @@ int main(void)
 				i=0;
 				while (buffer[i] != '\0')
 				{i++;}
-				HAL_UART_Transmit_DMA(&huart1, (uint8_t *)&buffer, i);
+				HAL_UART_Transmit_IT(&huart1, (uint8_t *)&buffer, i);
 
 
 				ui8_print_flag=0;
 
+			}
 #endif
 
 #if (DISPLAY_TYPE == DISPLAY_TYPE_EBiCS)
