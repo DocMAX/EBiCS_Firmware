@@ -66,8 +66,8 @@ typedef struct
     // Parameters received from display in setting mode:
     uint16_t WheelSize_mm;              // Unit: 1mm
     uint8_t  PAS_RUN_Direction;         // KM_PASDIR_FORWARD / KM_PASDIR_BACKWARD
-    uint8_t  ExecAutodetect;         	// 0 or 1, Use Parameter P18 of EN06 protocol
-    uint8_t  Reverse;         			// 0 or 1, Use Parameter P19 of EN06 protocol
+    uint8_t  P18_Function;              // P18 (Byte 6, Bit 7) - throttle enable
+    uint8_t  P19_Function;              // P19 (Byte 6, Bit 6) - autodetect trigger
     uint8_t  PAS_SCN_Tolerance;         // Number of PAS signals to start the motor
     uint8_t  PAS_N_Ratio;               // 0..255 PAS ratio
     uint8_t  HND_HL_ThrParam;           // KM_HND_HL_NO / KM_HND_HL_YES
@@ -75,6 +75,9 @@ typedef struct
     uint8_t  SYS_SSP_SlowStart;         // 1..4 Level of soft ramping at start
     uint8_t  SPS_SpdMagnets;            // Number of magnets of speedsensor
     uint16_t VOL_1_UnderVolt_x10;       // Unit: 0.1V
+
+    uint8_t  P17_Function;              // P17 (Byte 4, Bit 6)
+    uint8_t  Reverse;                    // Reverse (Byte 6, Bit 5) - spinning direction
 
 }RX_SETTINGS_t;
 
