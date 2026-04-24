@@ -18,18 +18,10 @@ signal.signal(signal.SIGINT, signal_handler)
 
 
 def drain(sock):
-    start = time.time()
-    while time.time() - start < 0.005:
-        ready, _, _ = select.select([sock], [], [], 0.001)
-        if ready:
-            sock.recv(4096)
-            # Drain all available
-            while True:
-                ready, _, _ = select.select([sock], [], [], 0)
-                if not ready:
-                    break
-                sock.recv(4096)
-            break
+    # Discard any immediately available data (non-blocking)
+    ready, _, _ = select.select([sock], [], [], 0)
+    if ready:
+        sock.recv(4096)
 
 def recv_until(sock, marker, timeout=30, verbose=False):
     response = b""
@@ -55,7 +47,7 @@ try:
     parser.add_argument("ip_address")
     parser.add_argument("lsh_file")
     parser.add_argument("-v", "--verbose", action="store_true")
-    parser.add_argument("-d", "--delay", type=float, default=0.0, help="Delay between lines in seconds (default: 0.0, to match serial speed)")
+    parser.add_argument("-d", "--delay", type=float, default=0.0042, help="Delay between lines in seconds (default: 0.0042s to match serial speed at 38400 baud)")
     parser.add_argument("-t", "--timing", action="store_true", help="Show timing details for comparison with serial flasher")
     args = parser.parse_args()
 
@@ -133,7 +125,7 @@ try:
 
         # Extra delay every 64 lines like serial flush()
         if (i % 64) == 0:
-            time.sleep(0.05)
+            time.sleep(0.03)
 
     total_time = (time.time() - total_start) * 1000
     
