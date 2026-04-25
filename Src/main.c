@@ -1188,24 +1188,48 @@ int main(void)
 #if !defined(FAST_LOOP_LOG)
 			if ((DISPLAY_TYPE == DISPLAY_TYPE_DEBUG || g_telnet_debug))
 			{ //print values for debugging
+				static uint32_t last_debug_output = 0;
+				if(HAL_GetTick() - last_debug_output >= DEBUG_OUTPUT_INTERVAL) {
+			    last_debug_output = HAL_GetTick();
 
-				sprintf_(buffer, "%d, %d, %d, %d, %d, %d, %d, %d, %d\r\n",
-						adcData[1],
-						i16_60deg_Hall_flag,
-						ui8_hall_state,
-						uint32_PAS,
-						MS.Battery_Current,
-						int32_temp_current_target ,
-						MS.i_q,
-						MS.u_abs,
-						SystemState);
-				// sprintf_(buffer, "%d, %d, %d, %d, %d, %d, %d\r\n",(uint16_t)adcData[0],(uint16_t)adcData[1],(uint16_t)adcData[2],(uint16_t)adcData[3],(uint16_t)(adcData[4]),(uint16_t)(adcData[5]),(uint16_t)(adcData[6])) ;
-				// sprintf_(buffer, "%d, %d, %d, %d, %d, %d\r\n",tic_array[0],tic_array[1],tic_array[2],tic_array[3],tic_array[4],tic_array[5]) ;
-				i=0;
-				while (buffer[i] != '\0')
-				{i++;}
-				HAL_UART_Transmit_IT(&huart1, (uint8_t *)&buffer, i);
+                sprintf_(buffer, "%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u\r\n",
+                        (uint16_t)adcData[0],
+                        (uint16_t)adcData[1],
+                        (uint16_t)adcData[2],
+                        (uint16_t)adcData[3],
+                        (uint16_t)adcData[4],
+                        (uint16_t)adcData[5],
+                        (uint16_t)adcData[6],
+                        (uint16_t)adcData[7],
+                        (uint8_t)HAL_GPIO_ReadPin(Hall_1_GPIO_Port, Hall_1_Pin),
+                        (uint8_t)HAL_GPIO_ReadPin(Hall_2_GPIO_Port, Hall_2_Pin),
+                        (uint8_t)HAL_GPIO_ReadPin(Hall_3_GPIO_Port, Hall_3_Pin),
+                        (uint8_t)HAL_GPIO_ReadPin(Brake_GPIO_Port, Brake_Pin),
+                        (uint8_t)HAL_GPIO_ReadPin(PAS_GPIO_Port, PAS_Pin),
+                        (uint8_t)HAL_GPIO_ReadPin(Speed_EXTI5_GPIO_Port, Speed_EXTI5_Pin),
+                        (uint8_t)HAL_GPIO_ReadPin(LED_GPIO_Port, LED_Pin),
+                        (uint8_t)HAL_GPIO_ReadPin(LIGHT_GPIO_Port, LIGHT_Pin),
+                        (uint8_t)HAL_GPIO_ReadPin(BRAKE_LIGHT_GPIO_Port, BRAKE_LIGHT_Pin),
+                        (uint16_t)MS.assist_level,
+                        (uint16_t)external_tics_to_speedx100(MS.Speed),
+                        (uint8_t)p17_torque_override,
+                        (uint8_t)p18_throttle_enabled,
+                        (uint8_t)p19_autodetect_active,
+                        (uint16_t)KM.Settings.VOL_1_UnderVolt_x10,
+                        (uint16_t)KM.Settings.WheelSize_mm,
+                        (uint8_t)KM.Settings.SPS_SpdMagnets,
+                        (uint8_t)KM.Rx.P08_SpeedLimit,
+                        (uint8_t)KM.Settings.P11_PAS_Sensitivity,
+                        (uint8_t)KM.Settings.P12_SlowStart,
+                        (uint8_t)KM.Settings.P13_PAS_Ratio,
+                        (uint16_t)KM.Rx.CUR_Limit_mA);
 
+                    // Send through UART
+                    i=0;
+                    while (buffer[i] != '\0')
+                    {i++;}
+                    HAL_UART_Transmit_IT(&huart1, (uint8_t *)&buffer, i);
+                }
 
 				ui8_print_flag=0;
 

@@ -70,6 +70,9 @@ typedef struct
     uint8_t  P19_Function;              // P19 (Byte 6, Bit 6) - autodetect trigger
     uint8_t  PAS_SCN_Tolerance;         // Number of PAS signals to start the motor
     uint8_t  PAS_N_Ratio;               // 0..255 PAS ratio
+    uint8_t  P11_PAS_Sensitivity;       // P11 (Byte 4, bits 0-4)
+    uint8_t  P12_SlowStart;            // P12 (Byte 8, lower 4 bits)
+    uint8_t  P13_PAS_Ratio;            // P13 (Byte 5)
     uint8_t  HND_HL_ThrParam;           // KM_HND_HL_NO / KM_HND_HL_YES
     uint8_t  HND_HF_ThrParam;           // KM_HND_HF_NO / KM_HND_HF_YES
     uint8_t  SYS_SSP_SlowStart;         // 1..4 Level of soft ramping at start
@@ -119,6 +122,7 @@ typedef struct
     uint8_t  CruiseControl;             // KM_CRUISE_OFF / KM_CRUISE_ON
     uint8_t  OverSpeed;                 // KM_OVERSPEED_OFF / KM_OVERSPEED_ON
     uint16_t SPEEDMAX_Limit;        	// Unit: km/h
+    uint8_t  P08_SpeedLimit;            // P08 speed limit decoded from display (km/h)
     uint16_t CUR_Limit_mA;              // Unit: mA
 
 }RX_PARAM_t;
