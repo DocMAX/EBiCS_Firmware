@@ -152,6 +152,8 @@ volatile uint8_t ui8_SPEED_flag=0;
 volatile uint8_t ui8_SPEED_control_flag=0;
 volatile uint8_t ui8_BC_limit_flag=0;  //flag for Battery current limitation
 volatile uint8_t ui8_6step_flag=0;
+volatile uint8_t g_telnet_debug = 0;
+volatile uint8_t g_last_dma_pos = 0;  // track last DMA position for debug toggle detection
 int16_t i16_60deg_Hall_flag=0;
 uint32_t uint32_PAS_counter= PAS_TIMEOUT+1;
 uint32_t uint32_PAS_HIGH_counter= 0;
@@ -687,6 +689,46 @@ int main(void)
 		//display message processing
 		if(ui8_UART_flag){
 #if (DISPLAY_TYPE == DISPLAY_TYPE_KINGMETER_901U||DISPLAY_TYPE & DISPLAY_TYPE_DEBUG)
+			// Check for telnet debug toggle sequences in newly received bytes only
+			// This avoids scanning the entire buffer and reduces latency in the
+			// critical display<->controller communication path
+			// Enable sequence: 0xDE 0xAD 0xBE 0xEF
+			// Disable sequence: 0xDE 0xAD 0xBE 0xEE
+			uint16_t current_dma_pos = 64 - DMA1_Channel5->CNDTR;
+			uint16_t new_bytes_count;
+			uint16_t start_pos;
+			
+			if(current_dma_pos > g_last_dma_pos) {
+				new_bytes_count = current_dma_pos - g_last_dma_pos;
+				start_pos = g_last_dma_pos;
+			} else {
+				new_bytes_count = current_dma_pos + 64 - g_last_dma_pos;
+				start_pos = g_last_dma_pos;
+			}
+			
+			// Only check for toggle sequences in newly received bytes (max 64)
+			if(new_bytes_count > 0 && new_bytes_count <= 64) {
+				uint16_t i;
+				uint16_t limit = (new_bytes_count > 60) ? 60 : new_bytes_count;
+				for (i = 0; i < limit; i++) {
+					uint16_t idx = (start_pos + i) & 0x3F;  // Modulo 64 using bitmask
+					uint8_t b0 = KM.RxBuff[idx];
+					// Quick check: first byte must be 0xDE
+					if (b0 == 0xDE) {
+						uint8_t b1 = KM.RxBuff[(idx+1)&0x3F];
+						uint8_t b2 = KM.RxBuff[(idx+2)&0x3F];
+						uint8_t b3 = KM.RxBuff[(idx+3)&0x3F];
+						if (b1 == 0xAD && b2 == 0xBE) {
+							if (b3 == 0xEF) {
+								g_telnet_debug = 1;
+							} else if (b3 == 0xEE) {
+								g_telnet_debug = 0;
+							}
+						}
+					}
+				}
+			}
+			g_last_dma_pos = current_dma_pos;
 
 			KingMeter_Service(&KM);
 #endif
@@ -1165,8 +1207,9 @@ int main(void)
 				else if(ui8_6step_flag) SystemState = SixStep;
 				else SystemState = Running;
 
-#if (DISPLAY_TYPE == DISPLAY_TYPE_DEBUG && !defined(FAST_LOOP_LOG))
-				//print values for debugging
+#if !defined(FAST_LOOP_LOG)
+			if ((DISPLAY_TYPE == DISPLAY_TYPE_DEBUG || g_telnet_debug))
+			{ //print values for debugging
 
 				sprintf_(buffer, "%d, %d, %d, %d, %d, %d, %d, %d, %d\r\n",
 						adcData[1],
@@ -1188,6 +1231,7 @@ int main(void)
 
 				ui8_print_flag=0;
 
+			}
 #endif
 
 #if (DISPLAY_TYPE == DISPLAY_TYPE_EBiCS)
