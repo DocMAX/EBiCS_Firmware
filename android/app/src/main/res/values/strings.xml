@@ -1,0 +1,24 @@
+<resources>
+    <string name="app_name">EBiCS Dashboard</string>
+    <string name="connected">Connected</string>
+    <string name="disconnected">Disconnected</string>
+    <string name="connecting">Connecting...</string>
+    <string name="btn_reset_counters">Reset Counters</string>
+    <string name="btn_assist_0">Assist 0</string>
+    <string name="btn_assist_1">Assist 1</string>
+    <string name="btn_assist_2">Assist 2</string>
+    <string name="btn_assist_3">Assist 3</string>
+    <string name="label_throttle">Throttle</string>
+    <string name="label_torque">Torque</string>
+    <string name="label_brake">Brake</string>
+    <string name="label_cadence">Cadence</string>
+    <string name="label_voltage">Voltage</string>
+    <string name="label_speed">Speed</string>
+    <string name="label_assist">Assist Level</string>
+    <string name="label_pas_pulses">PAS Pulses</string>
+    <string name="label_speed_pulses">Speed Pulses</string>
+    <string name="label_min">Min</string>
+    <string name="label_max">Max</string>
+    <string name="label_current">Current</string>
+    <string name="label_raw">Raw</string>
+</resources>

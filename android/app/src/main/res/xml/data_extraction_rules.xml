@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<data-extraction-rules>
+    <cloud-backup>
+        <rule domain="file" selector="@xml/backup_rules" />
+        <rule domain="database" selector="@xml/backup_rules" />
+        <rule domain="sharedpref" selector="@xml/backup_rules" />
+    </cloud-backup>
+    <device-transfer>
+        <rule domain="file" selector="@xml/backup_rules" />
+        <rule domain="database" selector="@xml/backup_rules" />
+        <rule domain="sharedpref" selector="@xml/backup_rules" />
+    </device-transfer>
+</data-extraction-rules>

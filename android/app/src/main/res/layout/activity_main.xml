@@ -1,0 +1,251 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:fillViewport="true"
+    android:background="@color/bg_dark"
+    tools:context=".MainActivity">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="8dp">
+
+        <!-- Header -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:padding="8dp">
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="EBiCS Motor Controller"
+                android:textSize="20sp"
+                android:textColor="@color/teal_200"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/connectionStatus"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/connecting"
+                android:textSize="14sp"
+                android:textColor="@color/accent_red" />
+        </LinearLayout>
+
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:background="@color/teal_200"
+            android:layout_marginVertical="4dp" />
+
+        <!-- Assist Level Display -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center"
+            android:padding="8dp">
+
+            <TextView
+                android:id="@+id/tvAssistLevel"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Assist: 0"
+                android:textSize="18sp"
+                android:textColor="@color/text_primary"
+                android:layout_marginEnd="16dp" />
+
+            <TextView
+                android:id="@+id/tvPasPulses"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="PAS: 0"
+                android:textSize="14sp"
+                android:textColor="@color/text_secondary"
+                android:layout_marginEnd="16dp" />
+
+            <TextView
+                android:id="@+id/tvSpeedPulses"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Speed: 0"
+                android:textSize="14sp"
+                android:textColor="@color/text_secondary" />
+        </LinearLayout>
+
+        <!-- Control Buttons -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center"
+            android:padding="8dp">
+
+            <Button
+                android:id="@+id/btnAssist0"
+                android:layout_width="0dp"
+                android:layout_height="48dp"
+                android:layout_weight="1"
+                android:text="@string/btn_assist_0"
+                android:backgroundTint="#FF333333"
+                android:textColor="@color/white"
+                android:layout_margin="2dp" />
+
+            <Button
+                android:id="@+id/btnAssist1"
+                android:layout_width="0dp"
+                android:layout_height="48dp"
+                android:layout_weight="1"
+                android:text="@string/btn_assist_1"
+                android:backgroundTint="#FF333333"
+                android:textColor="@color/white"
+                android:layout_margin="2dp" />
+
+            <Button
+                android:id="@+id/btnAssist2"
+                android:layout_width="0dp"
+                android:layout_height="48dp"
+                android:layout_weight="1"
+                android:text="@string/btn_assist_2"
+                android:backgroundTint="#FF333333"
+                android:textColor="@color/white"
+                android:layout_margin="2dp" />
+
+            <Button
+                android:id="@+id/btnAssist3"
+                android:layout_width="0dp"
+                android:layout_height="48dp"
+                android:layout_weight="1"
+                android:text="@string/btn_assist_3"
+                android:backgroundTint="#FF333333"
+                android:textColor="@color/white"
+                android:layout_margin="2dp" />
+
+            <Button
+                android:id="@+id/btnReset"
+                android:layout_width="0dp"
+                android:layout_height="48dp"
+                android:layout_weight="1"
+                android:text="@string/btn_reset_counters"
+                android:backgroundTint="@color/accent_orange"
+                android:textColor="@color/white"
+                android:layout_margin="2dp" />
+        </LinearLayout>
+
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:background="@color/teal_200"
+            android:layout_marginVertical="4dp" />
+
+        <!-- Gauges Row 1 -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center"
+            android:padding="4dp">
+
+            <com.ebics.dashboard.GaugeView
+                android:id="@+id/gaugeThrottle"
+                android:layout_width="0dp"
+                android:layout_height="160dp"
+                android:layout_weight="1"
+                android:layout_margin="4dp" />
+
+            <com.ebics.dashboard.GaugeView
+                android:id="@+id/gaugeTorque"
+                android:layout_width="0dp"
+                android:layout_height="160dp"
+                android:layout_weight="1"
+                android:layout_margin="4dp" />
+
+            <com.ebics.dashboard.GaugeView
+                android:id="@+id/gaugeBrake"
+                android:layout_width="0dp"
+                android:layout_height="160dp"
+                android:layout_weight="1"
+                android:layout_margin="4dp" />
+        </LinearLayout>
+
+        <!-- Progress Bars Row -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:padding="8dp">
+
+            <com.ebics.dashboard.ProgressBarView
+                android:id="@+id/barThrottle"
+                android:layout_width="match_parent"
+                android:layout_height="60dp"
+                android:layout_marginBottom="4dp" />
+
+            <com.ebics.dashboard.ProgressBarView
+                android:id="@+id/barTorque"
+                android:layout_width="match_parent"
+                android:layout_height="60dp"
+                android:layout_marginBottom="4dp" />
+
+            <com.ebics.dashboard.ProgressBarView
+                android:id="@+id/barAssist"
+                android:layout_width="match_parent"
+                android:layout_height="60dp"
+                android:layout_marginBottom="4dp" />
+        </LinearLayout>
+
+        <!-- Gauges Row 2 -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center"
+            android:padding="4dp">
+
+            <com.ebics.dashboard.GaugeView
+                android:id="@+id/gaugeCadence"
+                android:layout_width="0dp"
+                android:layout_height="140dp"
+                android:layout_weight="1"
+                android:layout_margin="4dp" />
+
+            <com.ebics.dashboard.GaugeView
+                android:id="@+id/gaugeVoltage"
+                android:layout_width="0dp"
+                android:layout_height="140dp"
+                android:layout_weight="1"
+                android:layout_margin="4dp" />
+
+            <com.ebics.dashboard.GaugeView
+                android:id="@+id/gaugeSpeed"
+                android:layout_width="0dp"
+                android:layout_height="140dp"
+                android:layout_weight="1"
+                android:layout_margin="4dp" />
+        </LinearLayout>
+
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:background="@color/teal_200"
+            android:layout_marginVertical="4dp" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="EBiCS Dashboard - Real-time Motor Controller Monitor"
+            android:textSize="12sp"
+            android:textColor="@color/text_secondary"
+            android:gravity="center"
+            android:padding="8dp" />
+
+    </LinearLayout>
+</ScrollView>
