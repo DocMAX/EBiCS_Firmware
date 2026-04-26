@@ -1214,7 +1214,7 @@ int main(void)
 				if(HAL_GetTick() - last_debug_output >= DEBUG_OUTPUT_INTERVAL) {
 			    last_debug_output = HAL_GetTick();
 
-				sprintf_(buffer, "%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u\r\n",
+				sprintf_(buffer, "$DBG%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u\r\n",
 						(uint16_t)adcData[0],
 						(uint16_t)adcData[1],
 						(uint16_t)adcData[2],
