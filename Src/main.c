@@ -1214,7 +1214,7 @@ int main(void)
 				if(HAL_GetTick() - last_debug_output >= DEBUG_OUTPUT_INTERVAL) {
 			    last_debug_output = HAL_GetTick();
 
-				sprintf_(buffer, "$DBG%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d\r\n",
+				sprintf_(buffer, "%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u\r\n",
 						(uint16_t)adcData[0],
 						(uint16_t)adcData[1],
 						(uint16_t)adcData[2],
@@ -1236,7 +1236,15 @@ int main(void)
 						(uint16_t)external_tics_to_speedx100(MS.Speed),
 						(uint8_t)p17_torque_override,
 						(uint8_t)p18_throttle_enabled,
-						(uint8_t)p19_autodetect_active);
+						(uint8_t)p19_autodetect_active,
+						(uint16_t)KM.Settings.VOL_1_UnderVolt_x10,
+						(uint16_t)KM.Settings.WheelSize_mm,
+						(uint8_t)KM.Settings.SPS_SpdMagnets,
+						(uint8_t)KM.Rx.P08_SpeedLimit,
+						(uint8_t)KM.Settings.P11_PAS_Sensitivity,
+						(uint8_t)KM.Settings.P12_SlowStart,
+						(uint8_t)KM.Settings.P13_PAS_Ratio,
+						(uint16_t)KM.Rx.CUR_Limit_mA);
 					// sprintf_(buffer, "%d, %d, %d, %d, %d, %d, %d\r\n",(uint16_t)adcData[0],(uint16_t)adcData[1],(uint16_t)adcData[2],(uint16_t)adcData[3],(uint16_t)(adcData[4]),(uint16_t)(adcData[5]),(uint16_t)(adcData[6])) ;
 					// sprintf_(buffer, "%d, %d, %d, %d, %d, %d\r\n",tic_array[0],tic_array[1],tic_array[2],tic_array[3],tic_array[4],tic_array[5]) ;
 					i=0;
