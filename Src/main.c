@@ -190,7 +190,7 @@ q31_t q31_u_d_temp=0;
 q31_t q31_u_q_temp=0;
 int16_t i16_sinus=0;
 int16_t i16_cosinus=0;
-char buffer[100];
+char buffer[350];
 char char_dyn_adc_state_old=1;
 const uint8_t assist_factor[10]={0, 51, 102, 153, 204, 255, 255, 255, 255, 255};
 const uint8_t assist_profile[2][6]= {	{0,10,20,30,45,48},
@@ -1210,26 +1210,43 @@ int main(void)
 #if !defined(FAST_LOOP_LOG)
 			if ((DISPLAY_TYPE == DISPLAY_TYPE_DEBUG || g_telnet_debug))
 			{ //print values for debugging
+				static uint32_t last_debug_output = 0;
+				if(HAL_GetTick() - last_debug_output >= DEBUG_OUTPUT_INTERVAL) {
+			    last_debug_output = HAL_GetTick();
 
-				sprintf_(buffer, "%d, %d, %d, %d, %d, %d, %d, %d, %d\r\n",
-						adcData[1],
-						i16_60deg_Hall_flag,
-						ui8_hall_state,
-						uint32_PAS,
-						MS.Battery_Current,
-						int32_temp_current_target ,
-						MS.i_q,
-						MS.u_abs,
-						SystemState);
-				// sprintf_(buffer, "%d, %d, %d, %d, %d, %d, %d\r\n",(uint16_t)adcData[0],(uint16_t)adcData[1],(uint16_t)adcData[2],(uint16_t)adcData[3],(uint16_t)(adcData[4]),(uint16_t)(adcData[5]),(uint16_t)(adcData[6])) ;
-				// sprintf_(buffer, "%d, %d, %d, %d, %d, %d\r\n",tic_array[0],tic_array[1],tic_array[2],tic_array[3],tic_array[4],tic_array[5]) ;
-				i=0;
+				sprintf_(buffer, "$DBG%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d\r\n",
+						(uint16_t)adcData[0],
+						(uint16_t)adcData[1],
+						(uint16_t)adcData[2],
+						(uint16_t)adcData[3],
+						(uint16_t)adcData[4],
+						(uint16_t)adcData[5],
+						(uint16_t)adcData[6],
+						(uint16_t)adcData[7],
+						(uint8_t)HAL_GPIO_ReadPin(Hall_1_GPIO_Port, Hall_1_Pin),
+						(uint8_t)HAL_GPIO_ReadPin(Hall_2_GPIO_Port, Hall_2_Pin),
+						(uint8_t)HAL_GPIO_ReadPin(Hall_3_GPIO_Port, Hall_3_Pin),
+						(uint8_t)HAL_GPIO_ReadPin(Brake_GPIO_Port, Brake_Pin),
+						(uint8_t)HAL_GPIO_ReadPin(PAS_GPIO_Port, PAS_Pin),
+						(uint8_t)HAL_GPIO_ReadPin(Speed_EXTI5_GPIO_Port, Speed_EXTI5_Pin),
+						(uint8_t)HAL_GPIO_ReadPin(LED_GPIO_Port, LED_Pin),
+						(uint8_t)HAL_GPIO_ReadPin(LIGHT_GPIO_Port, LIGHT_Pin),
+						(uint8_t)HAL_GPIO_ReadPin(BRAKE_LIGHT_GPIO_Port, BRAKE_LIGHT_Pin),
+						(uint16_t)MS.assist_level,
+						(uint16_t)external_tics_to_speedx100(MS.Speed),
+						(uint8_t)p17_torque_override,
+						(uint8_t)p18_throttle_enabled,
+						(uint8_t)p19_autodetect_active);
+					// sprintf_(buffer, "%d, %d, %d, %d, %d, %d, %d\r\n",(uint16_t)adcData[0],(uint16_t)adcData[1],(uint16_t)adcData[2],(uint16_t)adcData[3],(uint16_t)(adcData[4]),(uint16_t)(adcData[5]),(uint16_t)(adcData[6])) ;
+					// sprintf_(buffer, "%d, %d, %d, %d, %d, %d\r\n",tic_array[0],tic_array[1],tic_array[2],tic_array[3],tic_array[4],tic_array[5]) ;
+					i=0;
 				while (buffer[i] != '\0')
 				{i++;}
 				HAL_UART_Transmit_DMA(&huart1, (uint8_t *)&buffer, i);
 
-
 				ui8_print_flag=0;
+
+				} // DEBUG_OUTPUT_INTERVAL
 
 			}
 #endif
@@ -2444,9 +2461,9 @@ int main(void)
 			//printf_("%d, %d, %d, %d\n", temp3>>16,temp4>>16,temp5,temp6);
 
 			if (ui8_hall_state_old != ui8_hall_state) {
-				printf_("angle: %d, hallstate:  %d, hallcase %d, q31_angle %u \n",
-						(int16_t) (((q31_rotorposition_absolute >> 23) * 180) >> 8),
-						ui8_hall_state, ui8_hall_case,q31_rotorposition_absolute);
+				// printf_("angle: %d, hallstate:  %d, hallcase %d, q31_angle %u \n",
+				// 		(int16_t) (((q31_rotorposition_absolute >> 23) * 180) >> 8),
+				// 		ui8_hall_state, ui8_hall_case,q31_rotorposition_absolute);
 
 				switch (ui8_hall_case) //12 cases for each transition from one stage to the next. 6x forward, 6x reverse
 				{

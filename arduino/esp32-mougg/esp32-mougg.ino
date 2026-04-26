@@ -1,105 +1,285 @@
+/**
+ * ESP32 UART Bridge
+ * ─────────────────────────────────────────────────────────────────────────────
+ * Single-core design (no FreeRTOS tasks).
+ *
+ * At 9600 baud one byte takes ~1.04 ms. The loop() runs in a few
+ * microseconds per iteration — fast enough to service all three UARTs
+ * without any buffering lag, while keeping the WiFi/TCP stack fully
+ * responsive (it runs in the background via esp_wifi interrupt + lwIP).
+ *
+ * The previous dual-core design pinned a high-priority task to Core 0,
+ * starving the WiFi driver (which also lives on Core 0) → slow ping,
+ * no TCP output.
+ *
+ * Monitor port framing (CRLF-delimited lines):
+ *   Port 1000 — Controller:  "TX: " = ctrl→disp/batt,  "RX: " = disp/batt/net→ctrl
+ *   Port 1001 — Display:     "TX: " = disp→ctrl,        "RX: " = ctrl/net→disp
+ *   Port 1002 — Battery:     "TX: " = batt→ctrl,        "RX: " = ctrl/net→batt
+ *   Port 1003 — Debug (controller output, KingMeter frames stripped)
+ *   Port 1004 — Flasher passthrough (38400 baud, raw)
+ *
+ * NOTE: All structs/types must be defined before any functions in .ino
+ * files to prevent Arduino IDE prototype-injection from breaking type
+ * visibility.
+ * ─────────────────────────────────────────────────────────────────────────────
+ */
+
 #include <Arduino.h>
 #include <WiFi.h>
-#include <WiFiUdp.h>
 #include <ArduinoOTA.h>
-#include <ESPmDNS.h>
 #include <string.h>
 #include "config.h"
 
-#define UART_CONTROLLER_RX  3
-#define UART_CONTROLLER_TX  1
-#define UART_DISPLAY_RX    16
-#define UART_DISPLAY_TX    17
-#define UART_BATTERY_RX    25
-#define UART_BATTERY_TX    26
-#define WIFI_LED_PIN        2
+// ─── Pins & Baud rates ───────────────────────────────────────────────────────
+#define UART_CONTROLLER_RX   3
+#define UART_CONTROLLER_TX   1
+#define UART_DISPLAY_RX     16
+#define UART_DISPLAY_TX     17
+#define UART_BATTERY_RX     25
+#define UART_BATTERY_TX     26
+#define WIFI_LED_PIN         2
 
-#define UART_BAUD           9600
-#define CONTROLLER_BAUD     9600
-#define FLASHER_BAUD       38400
+#define CONTROLLER_BAUD   9600
+#define DISPLAY_BAUD      9600
+#define BATTERY_BAUD      9600
+#define FLASHER_BAUD     38400
 
+#define KM_SOF 0x3A   // KingMeter 901U start-of-frame byte
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Types — defined here so Arduino prototype injection cannot move them below
+// the functions that reference them.
+// ─────────────────────────────────────────────────────────────────────────────
+
+// CRLF-framed line accumulator for monitor ports.
+// Each writer direction gets its own instance to prevent frame interleaving.
+struct FrameBuf {
+  uint8_t data[512];
+  int     len;
+};
+
+// KingMeter frame filter state-machine.
+// Protocol: SOF(1) CMD(1) LEN(1) DATA[LEN] CHECKSUM(1)
+// Reads LEN dynamically to skip exactly the right number of bytes.
+struct KmFilter {
+  enum State : uint8_t { HUNT, GOT_SOF, GOT_CMD, IN_DATA } state;
+  uint8_t bytesLeft;
+};
+
+// ─── UART instances ───────────────────────────────────────────────────────────
 HardwareSerial SerialController(0);
 HardwareSerial SerialDisplay(2);
 HardwareSerial SerialBattery(1);
 
-WiFiServer serverUart0(1000);
-WiFiServer serverUart1(1001);
-WiFiServer serverUart2(1002);
-WiFiServer serverDebug(1003);
+// ─── TCP servers & clients ────────────────────────────────────────────────────
+WiFiServer serverCtrl(1000);
+WiFiServer serverDisp(1001);
+WiFiServer serverBatt(1002);
+WiFiServer serverDbg(1003);
 WiFiServer serverFlasher(1004);
 
-WiFiClient clientUart0;
-WiFiClient clientUart1;
-WiFiClient clientUart2;
-WiFiClient clientDebug;
+WiFiClient clientCtrl;
+WiFiClient clientDisp;
+WiFiClient clientBatt;
+WiFiClient clientDbg;
 WiFiClient clientFlasher;
 
-uint8_t  frameState = 0;
-uint16_t frameLen = 0;
-bool     displayDisabled = false;
-bool     flasherInit = false;
-uint32_t lastReconnect = 0;
-bool     debugEnabledOnSTM32 = false;
-static bool lastDebugConnected = false;
+// ─── Frame monitor buffers ───────────────────────────────────────────────────
+// Port 1000 (Controller monitor)
+static FrameBuf fb_ctrl_fromCtrl;  // ctrl output   → "TX: "
+static FrameBuf fb_ctrl_fromDisp;  // disp→ctrl     → "RX: "
+static FrameBuf fb_ctrl_fromBatt;  // batt→ctrl     → "RX: "
+static FrameBuf fb_ctrl_fromNet;   // net→ctrl      → "RX: "
+// Port 1001 (Display monitor)
+static FrameBuf fb_disp_fromDisp;  // disp output   → "TX: "
+static FrameBuf fb_disp_fromCtrl;  // ctrl→disp     → "RX: "
+static FrameBuf fb_disp_fromNet;   // net→disp      → "RX: "
+// Port 1002 (Battery monitor)
+static FrameBuf fb_batt_fromBatt;  // batt output   → "TX: "
+static FrameBuf fb_batt_fromCtrl;  // ctrl→batt     → "RX: "
+static FrameBuf fb_batt_fromNet;   // net→batt      → "RX: "
 
-uint8_t  buf[4096];
+// ─── Global state ────────────────────────────────────────────────────────────
+static bool     flasherMode      = false;
+static bool     lastFlasherConn  = false;
+static bool     displayDisabled  = false;
+static bool     debugEnabled     = false;
+static bool     lastDbgConnected = false;
+static uint32_t lastReconnect    = 0;
+static uint32_t lastLedToggle    = 0;
+static bool     ledState         = false;
 
-void handleClient(WiFiServer &server, WiFiClient &client) {
-  if (server.hasClient()) {
-    if (client && client.connected())
-      server.accept().stop();
+static KmFilter kmFilter;
+
+// Shared scratch buffer for UART/network reads (single-threaded)
+static uint8_t ioBuf[1024];
+
+// Magic sequences for STM32 debug enable/disable
+static const uint8_t DBG_ENABLE[]  = {0xDE, 0xAD, 0xBE, 0xEF};
+static const uint8_t DBG_DISABLE[] = {0xDE, 0xAD, 0xBE, 0xEE};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// KmFilter operations
+// ─────────────────────────────────────────────────────────────────────────────
+
+static void kmFilterInit(KmFilter &f) {
+  f.state     = KmFilter::HUNT;
+  f.bytesLeft = 0;
+}
+
+// Returns true if the byte is NOT part of a KingMeter frame (i.e. forward it)
+static bool kmFilterProcess(KmFilter &f, uint8_t b) {
+  switch (f.state) {
+    case KmFilter::HUNT:
+      if (b == KM_SOF) { f.state = KmFilter::GOT_SOF; return false; }
+      return true;
+    case KmFilter::GOT_SOF:
+      f.state = KmFilter::GOT_CMD;
+      return false;
+    case KmFilter::GOT_CMD:
+      // b is the LEN byte — only proceed if it's a reasonable frame size
+      if (b >= 11 && b <= 127) {
+        f.bytesLeft = b + 1;  // DATA[LEN] + CHECKSUM(1)
+        f.state = KmFilter::IN_DATA;
+      } else {
+        // Not a valid frame, forward this byte and hunt again
+        f.state = KmFilter::HUNT;
+        return true;
+      }
+      return false;
+    case KmFilter::IN_DATA:
+      if (--f.bytesLeft == 0) f.state = KmFilter::HUNT;
+      return false;
+  }
+  return true;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FrameBuf operations
+// ─────────────────────────────────────────────────────────────────────────────
+
+static void fbInit(FrameBuf &fb) {
+  fb.len = 0;
+}
+
+static void fbAppend(FrameBuf &fb, const uint8_t *src, int n) {
+  int cap = (int)sizeof(fb.data);
+  if (fb.len + n > cap) {
+    int drop = fb.len + n - cap;
+    memmove(fb.data, fb.data + drop, fb.len - drop);
+    fb.len -= drop;
+  }
+  memcpy(fb.data + fb.len, src, n);
+  fb.len += n;
+}
+
+// Emit all complete CRLF-delimited frames to client with a 4-char label.
+// Non-blocking: defers to next loop() if TCP send buffer is too small.
+static void emitFrames(FrameBuf &fb, WiFiClient &cli, const char *lbl) {
+  if (fb.len < 2 || !cli || !cli.connected()) return;
+  while (fb.len >= 2) {
+    int end = -1;
+    for (int i = 0; i < fb.len - 1; i++) {
+      if (fb.data[i] == '\r' && fb.data[i + 1] == '\n') { end = i; break; }
+    }
+    if (end < 0) {
+      // No complete frame yet. Discard if buffer is completely full.
+      if (fb.len >= (int)sizeof(fb.data) - 1) fb.len = 0;
+      break;
+    }
+    // Non-blocking guard: don't write if TCP buffer can't fit the whole frame
+    int avail = cli.availableForWrite();
+    if (avail > 0 && avail < 4 + end + 2) break;  // retry next loop()
+
+    cli.write((const uint8_t *)lbl, 4);
+    cli.write(fb.data, end);
+    cli.write((const uint8_t *)"\r\n", 2);
+
+    int consumed = end + 2;
+    fb.len -= consumed;
+    if (fb.len > 0) memmove(fb.data, fb.data + consumed, fb.len);
+  }
+}
+
+static void resetAllFrameBufs() {
+  fbInit(fb_ctrl_fromCtrl); fbInit(fb_ctrl_fromDisp);
+  fbInit(fb_ctrl_fromBatt); fbInit(fb_ctrl_fromNet);
+  fbInit(fb_disp_fromDisp); fbInit(fb_disp_fromCtrl); fbInit(fb_disp_fromNet);
+  fbInit(fb_batt_fromBatt); fbInit(fb_batt_fromCtrl); fbInit(fb_batt_fromNet);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Misc helpers
+// ─────────────────────────────────────────────────────────────────────────────
+
+static void handleClient(WiFiServer &srv, WiFiClient &cli) {
+  if (srv.hasClient()) {
+    WiFiClient nc = srv.accept();
+    if (cli && cli.connected())
+      nc.stop();
     else
-      client = server.accept();
+      cli = nc;
   }
 }
 
-void forwardToClients(WiFiClient &c1, WiFiClient &c2, uint8_t* buf, int len, const char* prefix) {
-  if (prefix) {
-    if(c1 && c1.connected()) { c1.write((uint8_t*)prefix, strlen(prefix)); c1.write(buf, len); }
-    if(c2 && c2.connected()) { c2.write((uint8_t*)prefix, strlen(prefix)); c2.write(buf, len); }
-  } else {
-    if(c1 && c1.connected()) c1.write(buf, len);
-    if(c2 && c2.connected()) c2.write(buf, len);
-  }
+static void restartController(uint32_t baud, int rxBuf, int txBuf) {
+  SerialController.end();
+  pinMode(UART_CONTROLLER_TX, OUTPUT);
+  digitalWrite(UART_CONTROLLER_TX, HIGH);
+  delay(5);
+  SerialController.setRxBufferSize(rxBuf);
+  SerialController.setTxBufferSize(txBuf);
+  SerialController.setDebugOutput(false);
+  SerialController.begin(baud, SERIAL_8N1, UART_CONTROLLER_RX, UART_CONTROLLER_TX);
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Setup
+// ─────────────────────────────────────────────────────────────────────────────
 
 void setup() {
-  delay(1000);
-  
+  delay(500);
   pinMode(WIFI_LED_PIN, OUTPUT);
   digitalWrite(WIFI_LED_PIN, LOW);
 
+  resetAllFrameBufs();
+  kmFilterInit(kmFilter);
+
   SerialController.setRxBufferSize(2048);
-  SerialController.setTxBufferSize(2048);
+  SerialController.setTxBufferSize(512);
+  SerialController.setDebugOutput(false);
   SerialController.begin(CONTROLLER_BAUD, SERIAL_8N1, UART_CONTROLLER_RX, UART_CONTROLLER_TX);
-  SerialDisplay.setRxBufferSize(256);
-  SerialDisplay.begin(UART_BAUD, SERIAL_8N1, UART_DISPLAY_RX, UART_DISPLAY_TX);
-  SerialBattery.setRxBufferSize(256);
-  SerialBattery.begin(UART_BAUD, SERIAL_8N1, UART_BATTERY_RX, UART_BATTERY_TX);
+
+  SerialDisplay.setRxBufferSize(1024);
+  SerialDisplay.setTxBufferSize(512);
+  SerialDisplay.setDebugOutput(false);
+  SerialDisplay.begin(DISPLAY_BAUD, SERIAL_8N1, UART_DISPLAY_RX, UART_DISPLAY_TX);
+
+  SerialBattery.setRxBufferSize(512);
+  SerialBattery.setTxBufferSize(512);
+  SerialBattery.setDebugOutput(false);
+  SerialBattery.begin(BATTERY_BAUD, SERIAL_8N1, UART_BATTERY_RX, UART_BATTERY_TX);
 
   WiFi.persistent(false);
   WiFi.mode(WIFI_STA);
   WiFi.disconnect(true);
-  // WiFi.config(INADDR_NONE, INADDR_NONE, INADDR_NONE);
-  // WiFi.setTxPower(WIFI_POWER_19_5dBm);
   WiFi.setAutoReconnect(true);
   WiFi.setHostname("esp32-mougg");
-  // MDNS.begin("esp32-mougg");
-  // MDNS.setInstanceName("esp32-mougg");
-  // MDNS.addService("_http._tcp", "tcp", 80);
   delay(100);
 
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
   uint32_t timeout = millis() + 30000;
   while (WiFi.status() != WL_CONNECTED && millis() < timeout) {
-    delay(500);
+    delay(200);
+    digitalWrite(WIFI_LED_PIN, !digitalRead(WIFI_LED_PIN));
   }
   lastReconnect = millis();
 
-  serverUart0.begin();
-  serverUart1.begin();
-  serverUart2.begin();
-  serverDebug.begin();
+  serverCtrl.begin();
+  serverDisp.begin();
+  serverBatt.begin();
+  serverDbg.begin();
   serverFlasher.begin();
 
   ArduinoOTA.setHostname("esp32-mougg");
@@ -112,236 +292,250 @@ void setup() {
   ArduinoOTA.begin();
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Loop
+// ─────────────────────────────────────────────────────────────────────────────
+
 void loop() {
-  int pos = 0;
-  static bool lastFlasherState = false;
+  int n;
 
-  // Static buffers for CRLF framing per direction
-  static uint8_t ctrlRxBuf[2048]; static int ctrlRxPos = 0;  // Controller → Port1000 TX
-  static uint8_t ctrlTxBuf[2048]; static int ctrlTxPos = 0;  // Port1000 RX → Controller
-  static uint8_t displayBuf[256];  static int displayPos = 0; // Display → Port1001 TX
-  static uint8_t displayTxBuf[256]; static int displayTxPos = 0; // Port1001 RX → Display
-  static uint8_t ctrlToDispEchoBuf[2048]; static int ctrlToDispEchoPos = 0; // Controller → Display echo to Port1001 RX
-  static uint8_t batteryRxBuf[256]; static int batteryRxPos = 0; // Battery → Port1002 TX
-  static uint8_t batteryTxBuf[256]; static int batteryTxPos = 0; // Port1002 RX → Battery
-
-  // Accept new flasher connection and configure hardware
-  if (serverFlasher.hasClient()) {
-    if (clientFlasher && clientFlasher.connected()) {
-      serverFlasher.accept().stop();
-    } else {
-      if (clientUart0 && clientUart0.connected()) { clientUart0.stop(); }
-      if (clientUart1 && clientUart1.connected()) { clientUart1.stop(); }
-      if (clientUart2 && clientUart2.connected()) { clientUart2.stop(); }
-      if (clientDebug && clientDebug.connected()) { clientDebug.stop(); }
-
-      clientFlasher = serverFlasher.accept();
-      SerialController.end();
-      pinMode(UART_CONTROLLER_TX, OUTPUT);
-      digitalWrite(UART_CONTROLLER_TX, HIGH);
-      delayMicroseconds(100);
-      SerialController.setRxBufferSize(2048);
-      SerialController.setTxBufferSize(2048);
-      SerialController.begin(FLASHER_BAUD, SERIAL_8N1, UART_CONTROLLER_RX, UART_CONTROLLER_TX);
-      frameState = 0;
-      frameLen = 0;
-      displayDisabled = true;
-      flasherInit = true;
-      lastFlasherState = true;
-      lastDebugConnected = false; // Reset debug state during flashing
-      while (SerialController.available()) SerialController.read();
-      SerialController.flush();
+  // ── Non-blocking LED blink ───────────────────────────────────────────────
+  {
+    uint32_t now      = millis();
+    uint32_t interval = (WiFi.status() == WL_CONNECTED) ? 2000u : 150u;
+    if (now - lastLedToggle >= interval) {
+      ledState = !ledState;
+      digitalWrite(WIFI_LED_PIN, ledState ? HIGH : LOW);
+      lastLedToggle = now;
     }
   }
 
-  // FLASHER MODE: bidirectional passthrough at 38400 baud
-  if (clientFlasher && clientFlasher.connected()) {
-    while (clientFlasher.available()) {
-      SerialController.write(clientFlasher.read());
-    }
-    while (SerialController.available()) {
-      clientFlasher.write(SerialController.read());
-    }
-    yield();
-    return;
-  }
-
-  // Handle flasher disconnect: restore controller baud (9600) and reset state
-  bool currentFlasherState = (clientFlasher && clientFlasher.connected());
-  if (lastFlasherState && !currentFlasherState) {
-    flasherInit = false;
-    SerialController.end();
-    pinMode(UART_CONTROLLER_TX, OUTPUT);
-    digitalWrite(UART_CONTROLLER_TX, HIGH);
-    delay(100);
-    SerialController.setRxBufferSize(2048);
-    SerialController.setTxBufferSize(2048);
-    SerialController.begin(CONTROLLER_BAUD, SERIAL_8N1, UART_CONTROLLER_RX, UART_CONTROLLER_TX);
-    WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-    lastReconnect = millis();
-    displayDisabled = false;
-    frameState = 0;
-    frameLen = 0;
-    ctrlRxPos = ctrlTxPos = displayPos = displayTxPos = ctrlToDispEchoPos = batteryRxPos = batteryTxPos = 0;
-  }
-  lastFlasherState = currentFlasherState;
-
+  // ── OTA & WiFi watchdog ──────────────────────────────────────────────────
   ArduinoOTA.handle();
-
   if (WiFi.status() != WL_CONNECTED && millis() - lastReconnect > 10000) {
     WiFi.reconnect();
     lastReconnect = millis();
   }
 
-  handleClient(serverUart0, clientUart0);
-  handleClient(serverUart1, clientUart1);
-  handleClient(serverUart2, clientUart2);
-  handleClient(serverDebug, clientDebug);
+  // ── Flasher: accept new connection ──────────────────────────────────────
+  if (serverFlasher.hasClient()) {
+    if (clientFlasher && clientFlasher.connected()) {
+      serverFlasher.accept().stop();  // reject duplicate
+    } else {
+      if (clientCtrl) clientCtrl.stop();
+      if (clientDisp) clientDisp.stop();
+      if (clientBatt) clientBatt.stop();
+      if (clientDbg)  clientDbg.stop();
 
-  // Detect Debug port connection state
-  bool currentDebugConnected = clientDebug.connected();
-  
-  // Unique 4-byte control sequences to avoid false triggers
-  // These are unlikely to appear in normal display protocol data
-  const uint8_t DEBUG_ENABLE_SEQ[] = {0xDE, 0xAD, 0xBE, 0xEF};
-  const uint8_t DEBUG_DISABLE_SEQ[] = {0xDE, 0xAD, 0xBE, 0xEE};
-  
-  if (currentDebugConnected && !lastDebugConnected) {
-      // Connected — enable debug on STM32
-      // Send multiple times to ensure it gets through
-      for (int i = 0; i < 5; i++) {
-          SerialController.write(DEBUG_ENABLE_SEQ, 4);
-          delay(20);
-      }
-      debugEnabledOnSTM32 = true;
-  }
-  if (!currentDebugConnected && lastDebugConnected) {
-      // Disconnected — disable debug on STM32
-      // Send multiple times to ensure it gets through
-      for (int i = 0; i < 5; i++) {
-          SerialController.write(DEBUG_DISABLE_SEQ, 4);
-          delay(20);
-      }
-      debugEnabledOnSTM32 = false;
-  }
-  lastDebugConnected = currentDebugConnected;
+      restartController(FLASHER_BAUD, 256, 256);
+      while (SerialController.available()) SerialController.read();
+      SerialController.flush();
+      resetAllFrameBufs();
+      kmFilterInit(kmFilter);
 
-  // Helper: extract frames delimited by CRLF, send with label - process ALL frames
-  // Optimized: only process one frame per call to reduce latency
-  auto emitFrames = [&](uint8_t* pb, int& pp, WiFiClient& cl, const char* lbl, int cap) {
-    if (pp < 2 || !cl || !cl.connected()) {
-      if (pp >= cap) pp = 0;  // overflow guard
-      return;
+      displayDisabled  = true;
+      flasherMode      = true;
+      lastFlasherConn  = true;
+      lastDbgConnected = false;
+      clientFlasher    = serverFlasher.accept();
     }
-    // Only find first frame to reduce processing time
-    for (int processed = 0; processed < pp - 1; processed++) {
-      if (pb[processed] == '\r' && pb[processed+1] == '\n') {
-        cl.write((uint8_t*)lbl, 4);
-        cl.write(pb, processed);
-        cl.write((uint8_t*)"\r\n", 2);
-        int rem = pp - (processed + 2);
-        for (int j = 0; j < rem; j++) pb[j] = pb[processed + 2 + j];
-        pp = rem;
-        return;  // Only process one frame per call to reduce latency
-      }
-    }
-    if (pp >= cap) pp = 0;  // overflow guard
-  };
-
-  // PRIORITY 1: Display → Controller (Display sends request)
-  pos = 0;
-  while (SerialDisplay.available() && pos < 32) buf[pos++] = SerialDisplay.read();
-  if (pos > 0) {
-    if (!flasherInit) {
-      SerialController.write(buf, pos);
-      for (int i = 0; i < pos; i++) if (ctrlTxPos < sizeof(ctrlTxBuf)) ctrlTxBuf[ctrlTxPos++] = buf[i];
-      emitFrames(ctrlTxBuf, ctrlTxPos, clientUart0, "RX: ", 2048);
-    }
-    for (int i = 0; i < pos; i++) if (displayPos < sizeof(displayBuf)) displayBuf[displayPos++] = buf[i];
-    emitFrames(displayBuf, displayPos, clientUart1, "TX: ", 256);
   }
 
-   // PRIORITY 2: Controller → Display (Controller responds)
-   pos = 0;
-   // Read more data per iteration to reduce loop overhead
-   while (SerialController.available() && pos < 64) buf[pos++] = SerialController.read();
-   if (pos > 0) {
-     if (!displayDisabled) {
-       if (!flasherInit) {
-         SerialDisplay.write(buf, pos);
-         for (int i = 0; i < pos; i++) if (ctrlToDispEchoPos < sizeof(ctrlToDispEchoBuf)) ctrlToDispEchoBuf[ctrlToDispEchoPos++] = buf[i];
-         emitFrames(ctrlToDispEchoBuf, ctrlToDispEchoPos, clientUart1, "RX: ", sizeof(ctrlToDispEchoBuf));
-       }
-     }
-     if (!flasherInit) SerialBattery.write(buf, pos);
-     for (int i = 0; i < pos; i++) {
-       if (ctrlRxPos < sizeof(ctrlRxBuf)) ctrlRxBuf[ctrlRxPos++] = buf[i];
-     }
-     emitFrames(ctrlRxBuf, ctrlRxPos, clientUart0, "TX: ", 2048);
-      // Forward debug data to debug client on port 1003 (skip KingMeter protocol frames)
-      if (clientDebug && clientDebug.connected()) {
-        static uint8_t skipBytes = 0;
-        uint8_t debugBuf[32];  // Buffer for debug data
-        int debugLen = 0;
-        for (int i = 0; i < pos && debugLen < (int)sizeof(debugBuf); i++) {
-          if (skipBytes > 0) {
-            // Skip this byte (part of KingMeter frame)
-            skipBytes--;
-          } else if (buf[i] == 0x3A) {
-            // Start of KingMeter frame detected (0x3A)
-            // Skip this byte and the rest of the frame
-            // KingMeter 901U frames are max 13 bytes total
-            // So skip up to 12 more bytes after 0x3A
-            skipBytes = 12;
-            // Don't forward the 0x3A byte
-          } else {
-            // Not part of a KingMeter frame, add to buffer
-            debugBuf[debugLen++] = buf[i];
+  // ── Flasher mode: raw bidirectional passthrough ──────────────────────────
+  if (flasherMode && clientFlasher && clientFlasher.connected()) {
+    n = clientFlasher.available();
+    if (n > 0) {
+      n = clientFlasher.readBytes(ioBuf, min(n, (int)sizeof(ioBuf)));
+      SerialController.write(ioBuf, n);
+    }
+    n = SerialController.available();
+    if (n > 0) {
+      n = SerialController.readBytes(ioBuf, min(n, (int)sizeof(ioBuf)));
+      clientFlasher.write(ioBuf, n);
+    }
+    yield();
+    return;
+  }
+
+  // ── Flasher disconnect: restore normal mode ──────────────────────────────
+  bool flasherNow = clientFlasher && clientFlasher.connected();
+  if (lastFlasherConn && !flasherNow) {
+    restartController(CONTROLLER_BAUD, 2048, 512);
+    resetAllFrameBufs();
+    kmFilterInit(kmFilter);
+    displayDisabled = false;
+    flasherMode     = false;
+    WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+    lastReconnect = millis();
+  }
+  lastFlasherConn = flasherNow;
+
+  // ── Accept normal TCP clients ────────────────────────────────────────────
+  handleClient(serverCtrl, clientCtrl);
+  handleClient(serverDisp, clientDisp);
+  handleClient(serverBatt, clientBatt);
+  handleClient(serverDbg,  clientDbg);
+
+  // ── Debug port connect/disconnect → control sequence to STM32 ────────────
+  // delay() here is acceptable: only runs once on connect/disconnect events,
+  // not every loop iteration.
+  {
+    bool dbgNow = clientDbg && clientDbg.connected();
+    if (dbgNow && !lastDbgConnected) {
+      for (int i = 0; i < 3; i++) {
+        SerialController.write(DBG_ENABLE, sizeof(DBG_ENABLE));
+        delay(15);
+      }
+      debugEnabled = true;
+    } else if (!dbgNow && lastDbgConnected) {
+      for (int i = 0; i < 3; i++) {
+        SerialController.write(DBG_DISABLE, sizeof(DBG_DISABLE));
+        delay(15);
+      }
+      debugEnabled = false;
+    }
+    lastDbgConnected = dbgNow;
+  }
+
+  // ═════════════════════════════════════════════════════════════════════════
+  // CRITICAL PATH 1: Display → Controller
+  // Read all available bytes and forward immediately — zero extra latency.
+  // ═════════════════════════════════════════════════════════════════════════
+  n = SerialDisplay.available();
+  if (n > 0) {
+    n = SerialDisplay.readBytes(ioBuf, min(n, (int)sizeof(ioBuf)));
+    SerialController.write(ioBuf, n);                   // forward immediately
+
+    fbAppend(fb_disp_fromDisp, ioBuf, n);              // port1001 "TX:"
+    fbAppend(fb_ctrl_fromDisp, ioBuf, n);              // port1000 "RX:"
+    emitFrames(fb_disp_fromDisp, clientDisp, "TX: ");
+    emitFrames(fb_ctrl_fromDisp, clientCtrl, "RX: ");
+  }
+
+  // ═════════════════════════════════════════════════════════════════════════
+  // CRITICAL PATH 2: Controller → Display + Battery
+  // ═════════════════════════════════════════════════════════════════════════
+  n = SerialController.available();
+  if (n > 0) {
+    n = SerialController.readBytes(ioBuf, min(n, (int)sizeof(ioBuf)));
+    if (!displayDisabled) SerialDisplay.write(ioBuf, n);
+    SerialBattery.write(ioBuf, n);
+
+    fbAppend(fb_ctrl_fromCtrl, ioBuf, n);              // port1000 "TX:"
+    fbAppend(fb_disp_fromCtrl, ioBuf, n);              // port1001 "RX:"
+    fbAppend(fb_batt_fromCtrl, ioBuf, n);              // port1002 "RX:"
+    emitFrames(fb_ctrl_fromCtrl, clientCtrl, "TX: ");
+    emitFrames(fb_disp_fromCtrl, clientDisp, "RX: ");
+    emitFrames(fb_batt_fromCtrl, clientBatt, "RX: ");
+
+    // Debug port: extract $DBG frames and forward payloads only
+    if (debugEnabled && clientDbg && clientDbg.connected()) {
+      static uint8_t dbgBuf[512];
+      static int dLen = 0;
+
+      // Append new bytes, drop oldest if overflow
+      if (dLen + n > (int)sizeof(dbgBuf)) {
+        int drop = dLen + n - sizeof(dbgBuf);
+        if (drop < dLen) {
+          memmove(dbgBuf, dbgBuf + drop, dLen - drop);
+          dLen -= drop;
+        } else {
+          dLen = 0;
+        }
+      }
+      if (dLen + n <= (int)sizeof(dbgBuf)) {
+        memcpy(dbgBuf + dLen, ioBuf, n);
+        dLen += n;
+      }
+
+      // Extract all complete $DBG...\r\n frames in one pass
+      int readPos = 0;
+      while (dLen - readPos >= 5) {  // need at least "$DBG\n"
+        // Find '$' followed by "DBG"
+        int k = -1;
+        for (int i = readPos; i <= dLen - 4; i++) {
+          if (dbgBuf[i] == '$' && dbgBuf[i+1] == 'D' && dbgBuf[i+2] == 'B' && dbgBuf[i+3] == 'G') {
+            k = i;
+            break;
           }
         }
-        // Send all debug data at once to reduce overhead
-        if (debugLen > 0) {
-          clientDebug.write(debugBuf, debugLen);
+        if (k < 0) break;  // no more markers
+
+        // Find '\n' after "$DBG"
+        int j = -1;
+        for (int i = k + 4; i < dLen; i++) {
+          if (dbgBuf[i] == '\n') {
+            j = i;
+            break;
+          }
         }
+        if (j < 0) {
+          // Incomplete frame — keep bytes from k onward for next read
+          if (k > 0 && dLen > k) {
+            memmove(dbgBuf, dbgBuf + k, dLen - k);
+            dLen -= k;
+          }
+          break;
+        }
+
+        // Forward payload (skip "$DBG", keep remainder including '\n')
+        clientDbg.write(dbgBuf + k + 4, j - (k + 4) + 1);
+
+        // Drop processed frame, keep any bytes after j+1
+        int kept = dLen - (j + 1);
+        if (kept > 0) {
+          memmove(dbgBuf, dbgBuf + j + 1, kept);
+        }
+        dLen = kept;
+        readPos = 0;  // restart search from beginning
       }
-   }
-
-  // LOWER PRIORITY: Battery traffic
-  pos = 0;
-  while (SerialBattery.available() && pos < 64) buf[pos++] = SerialBattery.read();
-  if (pos > 0) {
-    for (int i = 0; i < pos; i++) {
-      if (batteryRxPos < sizeof(batteryRxBuf)) batteryRxBuf[batteryRxPos++] = buf[i];
-      if (!flasherInit && ctrlTxPos < sizeof(ctrlTxBuf)) ctrlTxBuf[ctrlTxPos++] = buf[i];
     }
-    emitFrames(batteryRxBuf, batteryRxPos, clientUart2, "TX: ", 256);
-    if (!flasherInit) emitFrames(ctrlTxBuf, ctrlTxPos, clientUart0, "RX: ", 2048);
   }
 
-  // Network clients to UARTs
-  pos = 0;
-  while (clientUart0.available() && pos < 64) buf[pos++] = clientUart0.read();
-  if (pos > 0) {
-    SerialController.write(buf, pos);
-    for (int i = 0; i < pos; i++) if (ctrlTxPos < sizeof(ctrlTxBuf)) ctrlTxBuf[ctrlTxPos++] = buf[i];
-    emitFrames(ctrlTxBuf, ctrlTxPos, clientUart0, "RX: ", 2048);
+  // ═════════════════════════════════════════════════════════════════════════
+  // Battery → Controller
+  // ═════════════════════════════════════════════════════════════════════════
+  n = SerialBattery.available();
+  if (n > 0) {
+    n = SerialBattery.readBytes(ioBuf, min(n, (int)sizeof(ioBuf)));
+    SerialController.write(ioBuf, n);
+
+    fbAppend(fb_batt_fromBatt, ioBuf, n);              // port1002 "TX:"
+    fbAppend(fb_ctrl_fromBatt, ioBuf, n);              // port1000 "RX:"
+    emitFrames(fb_batt_fromBatt, clientBatt, "TX: ");
+    emitFrames(fb_ctrl_fromBatt, clientCtrl, "RX: ");
   }
 
-  pos = 0;
-  while (clientUart1.available() && pos < 64) buf[pos++] = clientUart1.read();
-  if (pos > 0) {
-    SerialDisplay.write(buf, pos);
-    for (int i = 0; i < pos; i++) if (displayTxPos < sizeof(displayTxBuf)) displayTxBuf[displayTxPos++] = buf[i];
-    emitFrames(displayTxBuf, displayTxPos, clientUart1, "RX: ", 256);
+  // ═════════════════════════════════════════════════════════════════════════
+  // Network → UART (commands injected from monitoring clients)
+  // ═════════════════════════════════════════════════════════════════════════
+
+  // Port 1000 → Controller
+  n = clientCtrl.available();
+  if (n > 0) {
+    n = clientCtrl.readBytes(ioBuf, min(n, (int)sizeof(ioBuf)));
+    SerialController.write(ioBuf, n);
+    fbAppend(fb_ctrl_fromNet, ioBuf, n);
+    emitFrames(fb_ctrl_fromNet, clientCtrl, "RX: ");
   }
 
-  pos = 0;
-  while (clientUart2.available() && pos < 64) buf[pos++] = clientUart2.read();
-  if (pos > 0) {
-    SerialBattery.write(buf, pos);
-    for (int i = 0; i < pos; i++) if (batteryTxPos < sizeof(batteryTxBuf)) batteryTxBuf[batteryTxPos++] = buf[i];
-    emitFrames(batteryTxBuf, batteryTxPos, clientUart2, "RX: ", 256);
+  // Port 1001 → Display
+  n = clientDisp.available();
+  if (n > 0) {
+    n = clientDisp.readBytes(ioBuf, min(n, (int)sizeof(ioBuf)));
+    SerialDisplay.write(ioBuf, n);
+    fbAppend(fb_disp_fromNet, ioBuf, n);
+    emitFrames(fb_disp_fromNet, clientDisp, "RX: ");
   }
+
+  // Port 1002 → Battery
+  n = clientBatt.available();
+  if (n > 0) {
+    n = clientBatt.readBytes(ioBuf, min(n, (int)sizeof(ioBuf)));
+    SerialBattery.write(ioBuf, n);
+    fbAppend(fb_batt_fromNet, ioBuf, n);
+    emitFrames(fb_batt_fromNet, clientBatt, "RX: ");
+  }
+
   yield();
 }
-
