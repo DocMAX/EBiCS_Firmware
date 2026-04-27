@@ -114,6 +114,7 @@ static KmFilter kmFilter;
 
 // Shared scratch buffer for UART/network reads (single-threaded)
 static uint8_t ioBuf[1024];
+static uint8_t dbgBuf[512]; static int dLen = 0;
 
 // Magic sequences for STM32 debug enable/disable
 static const uint8_t DBG_ENABLE[]  = {0xDE, 0xAD, 0xBE, 0xEF};
@@ -408,8 +409,6 @@ void loop() {
 
     fbAppend(fb_disp_fromDisp, ioBuf, n);              // port1001 "TX:"
     fbAppend(fb_ctrl_fromDisp, ioBuf, n);              // port1000 "RX:"
-    emitFrames(fb_disp_fromDisp, clientDisp, "TX: ");
-    emitFrames(fb_ctrl_fromDisp, clientCtrl, "RX: ");
   }
 
   // ═════════════════════════════════════════════════════════════════════════
@@ -424,71 +423,15 @@ void loop() {
     fbAppend(fb_ctrl_fromCtrl, ioBuf, n);              // port1000 "TX:"
     fbAppend(fb_disp_fromCtrl, ioBuf, n);              // port1001 "RX:"
     fbAppend(fb_batt_fromCtrl, ioBuf, n);              // port1002 "RX:"
-    emitFrames(fb_ctrl_fromCtrl, clientCtrl, "TX: ");
-    emitFrames(fb_disp_fromCtrl, clientDisp, "RX: ");
-    emitFrames(fb_batt_fromCtrl, clientBatt, "RX: ");
 
-    // Debug port: extract $DBG frames and forward payloads only
+    // Debug port: buffer capture (extraction deferred)
     if (debugEnabled && clientDbg && clientDbg.connected()) {
-      static uint8_t dbgBuf[512];
-      static int dLen = 0;
-
-      // Append new bytes, drop oldest if overflow
       if (dLen + n > (int)sizeof(dbgBuf)) {
         int drop = dLen + n - sizeof(dbgBuf);
-        if (drop < dLen) {
-          memmove(dbgBuf, dbgBuf + drop, dLen - drop);
-          dLen -= drop;
-        } else {
-          dLen = 0;
-        }
+        if (drop < dLen) { memmove(dbgBuf, dbgBuf + drop, dLen - drop); dLen -= drop; }
+        else dLen = 0;
       }
-      if (dLen + n <= (int)sizeof(dbgBuf)) {
-        memcpy(dbgBuf + dLen, ioBuf, n);
-        dLen += n;
-      }
-
-      // Extract all complete $DBG...\r\n frames in one pass
-      int readPos = 0;
-      while (dLen - readPos >= 5) {  // need at least "$DBG\n"
-        // Find '$' followed by "DBG"
-        int k = -1;
-        for (int i = readPos; i <= dLen - 4; i++) {
-          if (dbgBuf[i] == '$' && dbgBuf[i+1] == 'D' && dbgBuf[i+2] == 'B' && dbgBuf[i+3] == 'G') {
-            k = i;
-            break;
-          }
-        }
-        if (k < 0) break;  // no more markers
-
-        // Find '\n' after "$DBG"
-        int j = -1;
-        for (int i = k + 4; i < dLen; i++) {
-          if (dbgBuf[i] == '\n') {
-            j = i;
-            break;
-          }
-        }
-        if (j < 0) {
-          // Incomplete frame — keep bytes from k onward for next read
-          if (k > 0 && dLen > k) {
-            memmove(dbgBuf, dbgBuf + k, dLen - k);
-            dLen -= k;
-          }
-          break;
-        }
-
-        // Forward payload (skip "$DBG", keep remainder including '\n')
-        clientDbg.write(dbgBuf + k + 4, j - (k + 4) + 1);
-
-        // Drop processed frame, keep any bytes after j+1
-        int kept = dLen - (j + 1);
-        if (kept > 0) {
-          memmove(dbgBuf, dbgBuf + j + 1, kept);
-        }
-        dLen = kept;
-        readPos = 0;  // restart search from beginning
-      }
+      if (dLen + n <= (int)sizeof(dbgBuf)) { memcpy(dbgBuf + dLen, ioBuf, n); dLen += n; }
     }
   }
 
@@ -502,8 +445,6 @@ void loop() {
 
     fbAppend(fb_batt_fromBatt, ioBuf, n);              // port1002 "TX:"
     fbAppend(fb_ctrl_fromBatt, ioBuf, n);              // port1000 "RX:"
-    emitFrames(fb_batt_fromBatt, clientBatt, "TX: ");
-    emitFrames(fb_ctrl_fromBatt, clientCtrl, "RX: ");
   }
 
   // ═════════════════════════════════════════════════════════════════════════
@@ -516,7 +457,6 @@ void loop() {
     n = clientCtrl.readBytes(ioBuf, min(n, (int)sizeof(ioBuf)));
     SerialController.write(ioBuf, n);
     fbAppend(fb_ctrl_fromNet, ioBuf, n);
-    emitFrames(fb_ctrl_fromNet, clientCtrl, "RX: ");
   }
 
   // Port 1001 → Display
@@ -525,7 +465,6 @@ void loop() {
     n = clientDisp.readBytes(ioBuf, min(n, (int)sizeof(ioBuf)));
     SerialDisplay.write(ioBuf, n);
     fbAppend(fb_disp_fromNet, ioBuf, n);
-    emitFrames(fb_disp_fromNet, clientDisp, "RX: ");
   }
 
   // Port 1002 → Battery
@@ -534,7 +473,34 @@ void loop() {
     n = clientBatt.readBytes(ioBuf, min(n, (int)sizeof(ioBuf)));
     SerialBattery.write(ioBuf, n);
     fbAppend(fb_batt_fromNet, ioBuf, n);
-    emitFrames(fb_batt_fromNet, clientBatt, "RX: ");
+  }
+
+
+  // ── DEFERRED: TCP frame emission ──────────────────────────────
+  emitFrames(fb_ctrl_fromCtrl, clientCtrl, "TX: ");
+  emitFrames(fb_ctrl_fromDisp, clientCtrl, "RX: ");
+  emitFrames(fb_ctrl_fromBatt, clientCtrl, "RX: ");
+  emitFrames(fb_ctrl_fromNet,  clientCtrl, "RX: ");
+
+  emitFrames(fb_disp_fromDisp, clientDisp, "TX: ");
+  emitFrames(fb_disp_fromCtrl, clientDisp, "RX: ");
+  emitFrames(fb_disp_fromNet,  clientDisp, "RX: ");
+
+  emitFrames(fb_batt_fromBatt, clientBatt, "TX: ");
+  emitFrames(fb_batt_fromCtrl, clientBatt, "RX: ");
+  emitFrames(fb_batt_fromNet,  clientBatt, "RX: ");
+
+
+  // ── DEFERRED: Debug extraction ────────────────────────────────────
+  if (debugEnabled && clientDbg && clientDbg.connected() && dLen > 0) {
+    int k=0,j=0,kept=0;
+    for (int p=0; dLen>0 && p<dLen-4; p++) {
+      if(dbgBuf[p]=='$'&&dbgBuf[p+1]=='D'&&dbgBuf[p+2]=='B'&&dbgBuf[p+3]=='G'){
+        for(k=p+4,j=-1;j<0&&k<dLen;k++)if(dbgBuf[k]=='\n')j=k;if(j<0)break;
+        clientDbg.write(dbgBuf+p+4,j-p-4+1);kept=dLen-(j+1);
+        if(kept>0)memmove(dbgBuf,dbgBuf+j+1,kept);dLen=kept;p=-1;
+      }
+    }
   }
 
   yield();

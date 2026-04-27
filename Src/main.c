@@ -677,7 +677,7 @@ int main(void)
 
 	/* Infinite loop */
 	/* USER CODE BEGIN WHILE */
-	while (1)
+		while (1)
 	{
 		HAL_IWDG_Refresh(&hiwdg);
 
@@ -734,7 +734,6 @@ int main(void)
 #endif
 #if (DISPLAY_TYPE == DISPLAY_TYPE_KINGMETER_618U)
 			kingmeter_update();
-
 #endif
 
 #if (DISPLAY_TYPE & DISPLAY_TYPE_BAFANG)
@@ -1767,9 +1766,9 @@ int main(void)
 		//  /* DMA1_Channel4_IRQn interrupt configuration */
 		//  HAL_NVIC_SetPriority(DMA1_Channel4_IRQn, 3, 0);
 		//  HAL_NVIC_EnableIRQ(DMA1_Channel4_IRQn);
-		//  /* DMA1_Channel5_IRQn interrupt configuration */
-		//  //HAL_NVIC_SetPriority(DMA1_Channel5_IRQn, 0, 0);
-		//  //HAL_NVIC_EnableIRQ(DMA1_Channel5_IRQn);
+		/* DMA1_Channel5_IRQn interrupt configuration - ABSOLUTE PRIORITY for display RX */
+		HAL_NVIC_SetPriority(DMA1_Channel5_IRQn, 0, 0);
+		HAL_NVIC_EnableIRQ(DMA1_Channel5_IRQn);
 
 	}
 
