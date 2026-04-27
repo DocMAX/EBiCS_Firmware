@@ -17,6 +17,98 @@ ser = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 ser.connect((esp_host, esp_port))
 ser.settimeout(0.01)
 
+# Control connection for KingMeter settings (port 1000)
+ctrl_host = 'esp32-mougg.lan'
+ctrl_port = 1000
+ctrl_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+try:
+    ctrl_sock.connect((ctrl_host, ctrl_port))
+    ctrl_sock.settimeout(0.5)
+except Exception as e:
+    print(f"Warning: Could not connect to control port {ctrl_port}: {e}")
+    ctrl_sock = None
+
+# KingMeter settings state tracking
+p17_state = 0
+p18_state = 0
+p19_state = 0
+def build_km_settings_frame(p17, p18, p19):
+    """Build a KingMeter 901U settings frame (command 0x53) for P17/P18/P19.
+
+    Frame format:
+      SOF(0x3A) SrcAdd(0x1A) CmdCode(0x53) DataSize(13)
+      DATA[13]: bytes 4-16 with P17/P18/P19 settings
+      CHKSUM(2) CR(0x0D) LF(0x0A)
+    """
+    # Byte 4: P17_Function(bit6) + PAS_RUN_Direction(bit7). Other bits default 0.
+    byte4 = 0x00
+    if p17:
+        byte4 |= 0x40  # P17 at bit 6
+    # Byte 5: PAS_SCN_Tolerance (2..9), default 0
+    byte5 = 0x00
+    # Byte 6: [P19 bit6][P18 bit7] + PAS_N_Ratio bits[5:0] (0..255)
+    byte6 = 0x00
+    if p18:
+        byte6 |= 0x80  # P18 at bit 7
+    if p19:
+        byte6 |= 0x40  # P19 at bit 6
+    # Byte 7: HND_HL(bit7) + HND_HF(bit6) + PAS_N_Ratio bits[7:6] (continuation)
+    byte7 = 0x00
+    # Byte 8: SYS_SSP(bit7-4) + CUR_Limit bits[7:0] (low)
+    byte8 = 0x00
+    # Byte 9: SPS_SpdMagnets + CUR_Limit bits[15:8] (high)
+    # CUR = (byte9 & 0x3F)*500 per line 473, so keep byte9 & 0x3F for compatibility
+    byte9 = 0x00
+    # Byte 10: unused/reserved, default 0
+    byte10 = 0x00
+    # Byte 11: VOL_1_UnderVolt_x10 (low) + SPEEDMAX_Limit
+    byte11 = 0x00
+    # Byte 12: VOL_1_UnderVolt_x10 (high) + WheelSize_mm (low)
+    byte12 = 0x00
+    # Byte 13: WheelSize_mm (high)
+    byte13 = 0x00
+
+    frame = [
+        0x3A,  # StartCode
+        0x1A,  # SrcAdd: Controller
+        0x53,  # CmdCode: Settings
+        0x0D,  # DataSize: 13 bytes (bytes 4 through 16 inclusive)
+        byte4,   # byte 4
+        byte5,   # byte 5
+        byte6,   # byte 6
+        byte7,   # byte 7
+        byte8,   # byte 8
+        byte9,   # byte 9
+        byte10,  # byte 10
+        byte11,  # byte 11
+        byte12,  # byte 12
+        byte13,  # byte 13
+        0x00,    # byte 14
+        0x00,    # byte 15
+        0x00,    # byte 16
+    ]
+    
+    # Checksum = sum of bytes 1 through 16 (index 1 to 16 inclusive)
+    # frame indices: 0=SOF, 1=SrcAdd, 2=Cmd, 3=DataSize, 4-16=DATA (13 bytes)
+    # Sum bytes 1..16 (frame[1:17] = 16 elements)
+    chksum = sum(frame[1:17])  # bytes 1 through 16 inclusive
+    frame.append(chksum & 0xFF)      # Low byte
+    frame.append((chksum >> 8) & 0xFF)  # High byte
+    frame.append(0x0D)  # CR
+    frame.append(0x0A)  # LF
+
+    return bytes(frame)
+
+def _send_km_settings(ctrl_sock, p17, p18, p19):
+    """Send KingMeter settings frame to control port."""
+    if not ctrl_sock:
+        return
+    try:
+        frame = build_km_settings_frame(p17, p18, p19)
+        ctrl_sock.sendall(frame)
+    except Exception as e:
+        print(f"Control send error (port {ctrl_port}): {e}")
+
 # System state names
 SYSTEM_STATES = [
     "INIT",
@@ -144,7 +236,7 @@ def print_dashboard(row, throttle, torque, brake_adc, cadence, voltage, hallstat
     print(f"    {'Pedal Rotations:':<20} {pas_pulse_count // 32:>6}      {'Wheel Rotations:':<20} {speed_pulse_count // 6:>6}")
     print()
     print("=" * 92)
-    print("  Press Ctrl+C to exit  |  Press 'R' to reset counters  |  Press 0-3 to set assist level")
+    print("  Press Ctrl+C to exit  |  'R' reset  |  0-3 assist  |  7 P17  |  8 P18  |  9 P19")
 
 def update_min_max(name, value):
     if name not in min_vals or value < min_vals[name]:
@@ -304,6 +396,27 @@ while True:
                         print_dashboard(*last_row)
                 except Exception as e:
                     pass  # Ignore send errors
+            elif key == '7':
+                # Toggle P17 (Torque Override)
+                p17_state = 1 - p17_state
+                _send_km_settings(ctrl_sock, p17_state, p18_state, p19_state)
+                print(f"P17 Torque Override: {'ENABLED' if p17_state else 'DISABLED'}")
+                if last_row:
+                    print_dashboard(*last_row)
+            elif key == '8':
+                # Toggle P18 (Throttle Enable/Disable)
+                p18_state = 1 - p18_state
+                _send_km_settings(ctrl_sock, p17_state, p18_state, p19_state)
+                print(f"P18 Throttle: {'ENABLED' if p18_state else 'DISABLED'}")
+                if last_row:
+                    print_dashboard(*last_row)
+            elif key == '9':
+                # Toggle P19 (Autodetect Trigger)
+                p19_state = 1 - p19_state
+                _send_km_settings(ctrl_sock, p17_state, p18_state, p19_state)
+                print(f"P19 Autodetect: {'TRIGGERED' if p19_state else 'IDLE'}")
+                if last_row:
+                    print_dashboard(*last_row)
 
     except KeyboardInterrupt:
         print("\nExiting...")
