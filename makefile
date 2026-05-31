@@ -29,17 +29,18 @@ SRC_PATH = Drivers/CMSIS
 
 # Add inputs and outputs from these tool invocations to the build variables 
 
+.DEFAULT_GOAL := all
+
 # All Target
-all: LishuiFOC_01.elf
+all: build/EBiCS_Firmware.elf post-build
 
 # Tool invocations
-LishuiFOC_01.elf: $(OBJS) $(USER_OBJS) STM32F103C6Tx_FLASH_Bootloader.ld
+build/EBiCS_Firmware.elf: $(OBJS) $(USER_OBJS) STM32F103C6Tx_FLASH_Bootloader.ld
 	@echo 'Building target: $@'
 	@echo 'Invoking: MCU GCC Linker'
 	arm-none-eabi-gcc -mcpu=cortex-m3 -mthumb -mfloat-abi=soft -L $(SRC_PATH) -specs=nosys.specs -specs=nano.specs -T"STM32F103C6Tx_FLASH_Bootloader.ld" -Wl,-Map=output.map -Wl,--gc-sections -o "build/EBiCS_Firmware.elf" @"objects.list" $(USER_OBJS) $(LIBS) -lm
 	@echo 'Finished building target: $@'
 	@echo ' '
-	$(MAKE) --no-print-directory post-build
 
 # Other Targets
 clean:
@@ -47,7 +48,9 @@ clean:
 	-$(RM) output/*
 	-@echo ' '
 
-post-build:
+FORCE:
+
+post-build: FORCE
 	-@echo 'Generating hex and Printing size information:'
 	arm-none-eabi-objcopy -O ihex "build/EBiCS_Firmware.elf" "build/EBiCS_Firmware.hex"
 	arm-none-eabi-objcopy -O binary "build/EBiCS_Firmware.elf" "build/EBiCS_Firmware.bin"
@@ -55,17 +58,15 @@ post-build:
 	stat "build/EBiCS_Firmware.bin"
 	-@echo ' '
 	mkdir -p output
-	java -cp java make/hexToLsh.java
+	javac make/hexToLsh.java -d .
+	java -cp . hexToLsh
 	-@echo 'Firmware processing completed'
 
+# Flash target - flash the lsh file via serial
+flash:
+	@echo 'Flashing firmware via serial...'
+	python3 tools/flash.py
 
-.PHONY: all clean dependents
-.SECONDARY: post-build
-
--include makefile.targets
-
-
-.PHONY: all clean dependents
-.SECONDARY: post-build
+.PHONY: all clean dependents flash FORCE post-build
 
 -include makefile.targets

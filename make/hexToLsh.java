@@ -41,12 +41,12 @@ public class hexToLsh {
       if (!Files.exists(path)) {
         Files.createDirectory(path);
       }
-      File from = new File("Inc/config.h");
-      File to = new File("output/config.h");
-      Files.copy(from.toPath(), to.toPath());
-      from = new File("Inc/main.h");
-      to = new File("output/main.h");
-      Files.copy(from.toPath(), to.toPath());
+File from = new File("Inc/config.h");
+       File to = new File("output/config.h");
+       Files.copy(from.toPath(), to.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+       from = new File("Inc/main.h");
+       to = new File("output/main.h");
+       Files.copy(from.toPath(), to.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
 
       String lshFile = "output/EBiCS_Firmware";
       FileWriter myWriter = new FileWriter(lshFile + ".lsh");

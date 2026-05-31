@@ -266,11 +266,6 @@ PI_control_t PI_iq;
 PI_control_t PI_id;
 PI_control_t PI_speed;
 
-// P17-P19 runtime toggle flags
-uint8_t p17_torque_override = 0;
-uint8_t p18_throttle_enabled = 0;
-uint8_t p19_autodetect_active = 0;
-uint8_t p19_last_state = 0;
 
 int32_t battery_percent_fromcapacity = 50; 			//Calculation of used watthours not implemented yet
 int16_t wheel_time = 1000;							//duration of one wheel rotation for speed calculation
@@ -712,38 +707,6 @@ int main(void)
 #if (DISPLAY_TYPE == DISPLAY_TYPE_NO2)
 			No2_Service(&No2);
 #endif
-
-			// Process P17-P19 function toggles from KingMeter display
-#if (DISPLAY_TYPE & DISPLAY_TYPE_KINGMETER || DISPLAY_TYPE & DISPLAY_TYPE_DEBUG)
-			p17_torque_override = KM.Settings.P17_Function;
-			p18_throttle_enabled = KM.Settings.P18_Function;
-			
-			// P19 start autodetect - trigger on rising edge, wait for safe speed
-			if(KM.Settings.P19_Function == 1 && p19_last_state == 0){
-				p19_autodetect_active = 1;
-#if (DISPLAY_TYPE & DISPLAY_TYPE_DEBUG)
-				printf_("P19 TRIGGERED - waiting for speed < 10000, current: %u\n", MS.Speed);
-#endif
-			}
-			p19_last_state = KM.Settings.P19_Function;
-			
-			// Execute autodetect if triggered and system is stopped/safe (MS.Speed == 32000 or very low)
-			if(p19_autodetect_active && (MS.Speed >= 32000 || MS.Speed < 100)){
-#if (DISPLAY_TYPE & DISPLAY_TYPE_DEBUG)
-				printf_("P19 Executing autodetect...\n");
-#endif
-				autodetect();
-				p19_autodetect_active = 0;
-				p19_last_state = 0; // Reset to allow re-triggering
-			}
-			
-			// Update display status for dashboard (always available)
-#if (DISPLAY_TYPE & DISPLAY_TYPE_KINGMETER || DISPLAY_TYPE & DISPLAY_TYPE_DEBUG)
-			KM.Settings.P17_Function = p17_torque_override;
-			KM.Settings.P18_Function = p18_throttle_enabled;
-			KM.Settings.P19_Function = p19_autodetect_active ? 1 : 0; // Show active state
-#endif
-#endif // DISPLAY_TYPE_KINGMETER || DISPLAY_TYPE_DEBUG
 			ui8_UART_flag=0;
 		}
 
@@ -873,17 +836,6 @@ int main(void)
 
 			//next priority: undervoltage protection
 			else if(MS.Voltage<VOLTAGE_MIN)int32_temp_current_target=0;
-			
-			// P18 throttle enable/disable - highest priority after regen and undervoltage
-#if (DISPLAY_TYPE & DISPLAY_TYPE_KINGMETER || DISPLAY_TYPE & DISPLAY_TYPE_DEBUG)
-			else if(!p18_throttle_enabled){
-				int32_temp_current_target = 0; // Force disable regardless of mode
-#if (DISPLAY_TYPE & DISPLAY_TYPE_DEBUG)
-				printf_("P18=0: THROTTLE DISABLED\n");
-#endif
-			}
-#endif
-			
 			//next priority: push assist
 #if (DISPLAY_TYPE == DISPLAY_TYPE_KUNTENG)
 			else if(ui8_Walk_Assist_flag){int32_temp_current_target=(PUSHASSIST_CURRENT);} //Now working for Kunteng protocol.
@@ -1044,30 +996,6 @@ int main(void)
 			MS.i_q_setpoint=map(MS.int_Temperature, CONTROLLER_TEMPERATURE_THRESHOLD,CONTROLLER_TEMPERATURE_MAX,MS.i_q_setpoint,0); //ramp down power with processor temperatur to avoid overheating the controller
 #endif
 
-			// Apply P17 torque override: provide minimum current during standstill-to-pedaling transition
-#if (DISPLAY_TYPE & DISPLAY_TYPE_KINGMETER || DISPLAY_TYPE & DISPLAY_TYPE_DEBUG)
-			static uint32_t p17_ramp_counter = 0;
-			static uint8_t p17_ramp_active = 0;
-			if(p17_torque_override == 1 && ui16_torque > 1000 && MS.i_q_setpoint == 0) {
-				if (!p17_ramp_active) {
-					p17_ramp_active = 1;
-					p17_ramp_counter = 0;
-				}
-
-				// Apply soft start ramp with minimum current to prevent motor cutout
-				if (p17_ramp_counter < 100) {
-					int32_t ramp_current = map(p17_ramp_counter, 0, 100, 50, ((PH_CURRENT_MAX * MS.assist_level) >> 8));
-					MS.i_q_setpoint = ramp_current;
-					p17_ramp_counter++;
-				} else {
-					MS.i_q_setpoint = (PH_CURRENT_MAX * MS.assist_level) >> 8;
-				}
-			} else {
-				p17_ramp_active = 0;
-				p17_ramp_counter = 0;
-			}
-#endif
-
 			//auto KV detect
 			if(ui8_KV_detect_flag){
 				MS.i_q_setpoint=ui8_KV_detect_flag;
@@ -1168,8 +1096,7 @@ int main(void)
 #if (DISPLAY_TYPE == DISPLAY_TYPE_DEBUG && !defined(FAST_LOOP_LOG))
 				//print values for debugging
 
-				sprintf_(buffer, "%d, %d, %d, %d, %d, %d, %d, %d, %d\r\n",
-						adcData[1],
+				sprintf_(buffer, "%d, %d, %d, %d, %d, %d, %d, %d, %d, %d\r\n",
 						i16_60deg_Hall_flag,
 						ui8_hall_state,
 						uint32_PAS,
@@ -1177,7 +1104,9 @@ int main(void)
 						int32_temp_current_target ,
 						MS.i_q,
 						MS.u_abs,
-						SystemState);
+						SystemState,
+						ui16_torque,
+						ui16_throttle);
 				// sprintf_(buffer, "%d, %d, %d, %d, %d, %d, %d\r\n",(uint16_t)adcData[0],(uint16_t)adcData[1],(uint16_t)adcData[2],(uint16_t)adcData[3],(uint16_t)(adcData[4]),(uint16_t)(adcData[5]),(uint16_t)(adcData[6])) ;
 				// sprintf_(buffer, "%d, %d, %d, %d, %d, %d\r\n",tic_array[0],tic_array[1],tic_array[2],tic_array[3],tic_array[4],tic_array[5]) ;
 				i=0;
@@ -1757,7 +1686,7 @@ int main(void)
 
 		/*Configure GPIO pins : Speed_EXTI5_Pin PAS_EXTI8_Pin */
 		GPIO_InitStruct.Pin = Speed_EXTI5_Pin|PAS_EXTI8_Pin;
-		GPIO_InitStruct.Mode = GPIO_MODE_IT_FALLING;
+		GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING_FALLING;
 		GPIO_InitStruct.Pull = GPIO_PULLUP;
 		HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 

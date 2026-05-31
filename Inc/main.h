@@ -78,8 +78,12 @@
 #define BRAKE_LIGHT_GPIO_Port GPIOB
 #define PAS_Pin GPIO_PIN_8
 #define PAS_GPIO_Port GPIOB
-#define Brake_Pin GPIO_PIN_11  // put a 15 here for new generation controllers!
+#define Brake_Pin GPIO_PIN_11
 #define Brake_GPIO_Port GPIOA
+#define PAS_TEST1_Pin GPIO_PIN_1
+#define PAS_TEST1_GPIO_Port GPIOB
+#define PAS_TEST2_Pin GPIO_PIN_12
+#define PAS_TEST2_GPIO_Port GPIOB
 #define Speed_EXTI5_Pin GPIO_PIN_5
 #define Speed_EXTI5_GPIO_Port GPIOB
 #define Speed_EXTI5_EXTI_IRQn EXTI9_5_IRQn
