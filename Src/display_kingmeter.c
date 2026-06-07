@@ -460,6 +460,7 @@ static void KM_901U_Service(KINGMETER_t* KM_ctx)
      			                KM_ctx->Settings.P17_Function        = (KM_Message[4] & 0x40) >> 6; // P17 (Byte 4, Bit 6)
      			                KM_ctx->Settings.P18_Function        = (KM_Message[6]>>7)&0x01; 	    // P18 (Byte 6, Bit 7) - throttle enable override
      			                KM_ctx->Settings.P19_Function        = (KM_Message[6]>>6)&0x01; 	    // P19 (Byte 6, Bit 6) - autodetect trigger
+     			                if(KM_ctx->Settings.P19_Function) autodetect();
      			                KM_ctx->Settings.Reverse               = (KM_Message[6]>>5)&0x01; 	    // set spinning direction (was P19 in old protocol)
     			                KM_ctx->Settings.PAS_SCN_Tolerance   =  KM_Message[5];              // 2..9
     			                KM_ctx->Settings.PAS_N_Ratio         =  KM_Message[6];              // 0..255

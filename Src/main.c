@@ -1684,8 +1684,14 @@ int main(void)
 		HAL_GPIO_Init(Brake_GPIO_Port, &GPIO_InitStruct);
 
 
-		/*Configure GPIO pins : Speed_EXTI5_Pin PAS_EXTI8_Pin */
-		GPIO_InitStruct.Pin = Speed_EXTI5_Pin|PAS_EXTI8_Pin;
+		/*Configure GPIO pin : Speed_EXTI5_Pin */
+		GPIO_InitStruct.Pin = Speed_EXTI5_Pin;
+		GPIO_InitStruct.Mode = GPIO_MODE_IT_FALLING;
+		GPIO_InitStruct.Pull = GPIO_PULLUP;
+		HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+
+		/*Configure GPIO pin : PAS_EXTI8_Pin */
+		GPIO_InitStruct.Pin = PAS_EXTI8_Pin;
 		GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING_FALLING;
 		GPIO_InitStruct.Pull = GPIO_NOPULL;
 		HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
