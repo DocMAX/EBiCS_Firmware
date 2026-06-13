@@ -13,6 +13,7 @@ main.hex
 *.rst
 *.sym
 
+__pycache__/
 Debug
 /JavaConfigurator/nbproject/private/
 /JavaConfigurator/build/

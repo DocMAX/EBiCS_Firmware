@@ -847,7 +847,10 @@ int main(void)
 
 #ifdef TS_MODE //torque-sensor mode
 				//calculate current target form torque, cadence and assist level
-				int32_temp_current_target = (TS_COEF*(int32_t)(MS.assist_level)* ((uint32_torque_cumulated*PAS_IMP_PER_TURN_RECIP_MULTIPLIER)>>8)/uint32_PAS)>>8; // >>8 aus KM5S-Protokoll Assistlevel 0..255
+				// multiply by MS.Speed (time between speed pulses) to make it proportional to rider power
+				// MS.Speed is large at low speed, small at high speed (~32000 at 0km/h, ~440 at 25km/h)
+				// MS.Speed>>8 prevents 32-bit overflow and gives good proportionality
+				int32_temp_current_target = (TS_COEF*(int32_t)(MS.assist_level)* ((uint32_torque_cumulated*PAS_IMP_PER_TURN_RECIP_MULTIPLIER)>>8)*(int32_t)(MS.Speed>>8)/uint32_PAS)>>8;
 
 				//limit currest target to max value
 				if(int32_temp_current_target>PH_CURRENT_MAX) int32_temp_current_target = PH_CURRENT_MAX;
@@ -855,6 +858,13 @@ int main(void)
 				if(uint32_PAS_counter > PAS_TIMEOUT){
 					int32_temp_current_target = 0;
 					if(uint32_torque_cumulated>0)uint32_torque_cumulated--; //ramp down cumulated torque value
+				}
+				//Startup boost: if bike is standing still and rider applies strong torque (>1000 raw), give full power for startup
+				// Ramp down linearly from PH_CURRENT_MAX at ~0km/h (MS.Speed > 10000) to 0 at ~18km/h (MS.Speed < 3000)
+				// This must be AFTER the PAS_TIMEOUT check, so the boost overrides the zero from pedal standstill
+				if(ui16_torque > 1000){
+					int32_t startup_target = map(MS.Speed, 3000, 10000, 0, PH_CURRENT_MAX);
+					if(startup_target > int32_temp_current_target) int32_temp_current_target = startup_target;
 				}
 
 
@@ -1096,7 +1106,7 @@ int main(void)
 #if (DISPLAY_TYPE == DISPLAY_TYPE_DEBUG && !defined(FAST_LOOP_LOG))
 				//print values for debugging
 
-				sprintf_(buffer, "%d, %d, %d, %d, %d, %d, %d, %d, %d, %d\r\n",
+				sprintf_(buffer, "%d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d\r\n",
 						i16_60deg_Hall_flag,
 						ui8_hall_state,
 						uint32_PAS,
@@ -1106,7 +1116,8 @@ int main(void)
 						MS.u_abs,
 						SystemState,
 						ui16_torque,
-						ui16_throttle);
+						ui16_throttle,
+						MS.Speed);
 				// sprintf_(buffer, "%d, %d, %d, %d, %d, %d, %d\r\n",(uint16_t)adcData[0],(uint16_t)adcData[1],(uint16_t)adcData[2],(uint16_t)adcData[3],(uint16_t)(adcData[4]),(uint16_t)(adcData[5]),(uint16_t)(adcData[6])) ;
 				// sprintf_(buffer, "%d, %d, %d, %d, %d, %d\r\n",tic_array[0],tic_array[1],tic_array[2],tic_array[3],tic_array[4],tic_array[5]) ;
 				i=0;
