@@ -925,6 +925,11 @@ int main(void)
 
 #endif //end NTCE
 
+// P18 Function from King-Meter display: 0 = throttle disabled, 1 = throttle enabled
+#if (DISPLAY_TYPE & DISPLAY_TYPE_KINGMETER)
+				if(!KM.Settings.P18_Function) uint16_mapped_throttle = 0;
+#endif
+
 #ifndef TS_MODE //normal PAS Mode
 
 				if (uint32_PAS_counter < PAS_TIMEOUT) int32_temp_current_target = uint16_mapped_PAS;		//set current target in torque-simulation-mode, if pedals are turning
