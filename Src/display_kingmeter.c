@@ -163,6 +163,7 @@ void KingMeter_Init (KINGMETER_t* KM_ctx)
     KM_ctx->Settings.PAS_RUN_Direction      = KM_PASDIR_FORWARD;
     KM_ctx->Settings.PAS_SCN_Tolerance      = (uint8_t) pas_tolerance;
     KM_ctx->Settings.PAS_N_Ratio            = 255;
+    KM_ctx->Settings.P11_Function           = 12;
     KM_ctx->Settings.HND_HL_ThrParam        = KM_HND_HL_NO;
     KM_ctx->Settings.HND_HF_ThrParam        = KM_HND_HF_NO;
     KM_ctx->Settings.SYS_SSP_SlowStart      = 1;
@@ -177,7 +178,7 @@ void KingMeter_Init (KINGMETER_t* KM_ctx)
 #endif
 
 #if (DISPLAY_TYPE == DISPLAY_TYPE_KINGMETER_901U|| DISPLAY_TYPE & DISPLAY_TYPE_DEBUG)
-	KM_ctx->Rx.AssistLevel                  = 128;					//MK5S Level 0...255
+	KM_ctx->Rx.AssistLevel                  = 70;					//MK5S Level 0...255
 #endif
 
     KM_ctx->Rx.Headlight                    = KM_HEADLIGHT_OFF;
@@ -456,9 +457,12 @@ static void KM_901U_Service(KINGMETER_t* KM_ctx)
     			            	if(!CheckSum) //low-byte and high-byte
     			            		{
 
-     			                KM_ctx->Settings.PAS_RUN_Direction   = (KM_Message[4] & 0x80) >> 7; // KM_PASDIR_FORWARD / KM_PASDIR_BACKWARD
-     			                KM_ctx->Settings.P17_Function        = (KM_Message[4] & 0x40) >> 6; // P17 (Byte 4, Bit 6)
-     			                KM_ctx->Settings.P18_Function        = (KM_Message[6]>>7)&0x01; 	    // P18 (Byte 6, Bit 7) - throttle enable override
+									KM_ctx->Settings.PAS_RUN_Direction   = (KM_Message[4] & 0x80) >> 7; // KM_PASDIR_FORWARD / KM_PASDIR_BACKWARD
+									KM_ctx->Settings.P17_Function        = (KM_Message[4] & 0x40) >> 6; // P17 (Byte 4, Bit 6)
+									KM_ctx->Settings.P11_Function        = KM_Message[4] & 0x1F;
+									if(KM_ctx->Settings.P11_Function < 1)KM_ctx->Settings.P11_Function = 1;
+									if(KM_ctx->Settings.P11_Function > 24)KM_ctx->Settings.P11_Function = 24;
+									KM_ctx->Settings.P18_Function        = (KM_Message[6]>>7)&0x01; 	    // P18 (Byte 6, Bit 7) - throttle enable override
      			                KM_ctx->Settings.P19_Function        = (KM_Message[6]>>6)&0x01; 	    // P19 (Byte 6, Bit 6) - autodetect trigger
      			                if(KM_ctx->Settings.P19_Function) autodetect();
      			                KM_ctx->Settings.Reverse               = (KM_Message[6]>>5)&0x01; 	    // set spinning direction (was P19 in old protocol)
