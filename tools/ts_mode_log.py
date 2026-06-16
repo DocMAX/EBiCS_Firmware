@@ -23,7 +23,6 @@ Writes output to /tmp/ts_mode_log.csv
 import serial
 import sys
 import time
-import csv
 import os
 import signal
 
@@ -31,23 +30,24 @@ SERIAL_PORT = "/dev/ttyUSB0"
 SERIAL_BAUD = 57600
 OUTPUT_FILE = "/tmp/ts_mode_log.csv"
 
-FIELDNAMES = [
-    "timestamp",
-    "hall_flag",
-    "hall_state",
-    "uint32_PAS",
-    "battery_current",
-    "ph_current_abs",
-    "current_target",
-    "i_q",
-    "u_abs",
-    "system_state",
-    "torque",
-    "throttle",
-    "MS_Speed",
-    "speed_kmh",
-    "assist_level",
+FIELDS = [
+    ("i16_60deg_Hall_flag", "hall_flag"),
+    ("ui8_hall_state", "hall_state"),
+    ("uint32_PAS", "pas"),
+    ("MS.Battery_Current", "battery_current"),
+    ("i16_ph_current_abs", "ph_current"),
+    ("int32_temp_current_target", "temp_current_target"),
+    ("MS.i_q", "iq"),
+    ("MS.u_abs", "u_abs"),
+    ("SystemState", "system_state"),
+    ("ui16_torque", "torque"),
+    ("ui16_throttle", "throttle"),
+    ("MS.Speed", "speed"),
+    ("ui16_speed_kmh", "speed_kmh"),
+    ("MS.assist_level", "assist_level"),
 ]
+
+FIELDNAMES = ["timestamp"] + [field_key for _, field_key in FIELDS]
 
 running = True
 
@@ -69,9 +69,7 @@ def main():
         print(f"Error opening serial port: {e}", file=sys.stderr)
         sys.exit(1)
 
-    csv_fp = open(OUTPUT_FILE, "w", newline="")
-    writer = csv.DictWriter(csv_fp, fieldnames=FIELDNAMES)
-    writer.writeheader()
+    csv_fp = open(OUTPUT_FILE, "w")
 
     buf = ""
     start_time = time.time()
@@ -91,7 +89,7 @@ def main():
 
                 # Skip non-CSV lines
                 parts = [p.strip() for p in line.split(",") if p.strip()]
-                if len(parts) != 14:
+                if len(parts) != len(FIELDS):
                     continue
 
                 try:
@@ -100,31 +98,18 @@ def main():
                     continue
 
                 elapsed = time.time() - start_time
-                row = {
-                    "timestamp": f"{elapsed:.3f}",
-                    "hall_flag": vals[0],
-                    "hall_state": vals[1],
-                    "uint32_PAS": vals[2],
-                    "battery_current": vals[3],
-                    "ph_current_abs": vals[4],
-                    "current_target": vals[5],
-                    "i_q": vals[6],
-                    "u_abs": vals[7],
-                    "system_state": vals[8],
-                    "torque": vals[9],
-                    "throttle": vals[10],
-                    "MS_Speed": vals[11],
-                    "speed_kmh": vals[12],
-                    "assist_level": vals[13],
-                }
-                writer.writerow(row)
+                row = {"timestamp": f"{elapsed:.3f}"}
+                for (field_label, field_key), val in zip(FIELDS, vals):
+                    row[field_key] = val
+
+                csv_fp.write(", ".join(f"{k}={v}" for k, v in row.items()) + "\n")
                 csv_fp.flush()
 
                 # Live preview (every 50 lines)
                 if int(row["timestamp"].replace(".", "")) % 50000 < 1000:
-                    print(f"t={row['timestamp']}s  PAS={row['uint32_PAS']:>6d}  "
-                          f"Torque={row['torque']:>5d}  Speed={row['MS_Speed']:>6d}  "
-                          f"Target={row['current_target']:>6d}  Iq={row['i_q']:>6d}  "
+                    print(f"t={row['timestamp']}s  PAS={row['pas']:>6d}  "
+                          f"Torque={row['torque']:>5d}  Speed={row['speed']:>6d}  "
+                          f"Target={row['temp_current_target']:>6d}  Iq={row['iq']:>6d}  "
                           f"km/h={row['speed_kmh']:.1f}  Assist={row['assist_level']}")
     except KeyboardInterrupt:
         pass

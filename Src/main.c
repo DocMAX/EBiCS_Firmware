@@ -858,14 +858,21 @@ int main(void)
 				if(speed_floor < 39) speed_floor = 39;
 				int32_t pas_floor = uint32_PAS;
 				if(pas_floor < 1000) pas_floor = 1000;
-				int32_temp_current_target = (ts_coef*(int32_t)(MS.assist_level)* ((uint32_torque_cumulated*PAS_IMP_PER_TURN_RECIP_MULTIPLIER)>>8)*speed_floor/pas_floor)>>8;
+				int32_t ts_target = (ts_coef*(int32_t)(MS.assist_level)* ((uint32_torque_cumulated*PAS_IMP_PER_TURN_RECIP_MULTIPLIER)>>8)*speed_floor/pas_floor)>>8;
 
 				//limit currest target to max value
-				if(int32_temp_current_target>PH_CURRENT_MAX) int32_temp_current_target = PH_CURRENT_MAX;
+				if(ts_target>PH_CURRENT_MAX) ts_target = PH_CURRENT_MAX;
 				//set target to zero, if pedals are not turning
-				if(uint32_PAS_counter > PAS_TIMEOUT){
+				if(uint32_PAS_counter > TS_PEDAL_RELEASE_TIMEOUT){
 					int32_temp_current_target = 0;
-					if(uint32_torque_cumulated>0)uint32_torque_cumulated--; //ramp down cumulated torque value
+					if(uint32_torque_cumulated>0)uint32_torque_cumulated--;
+				}
+				else if(uint32_PAS_counter > PAS_TIMEOUT && ui16_torque < (ui16_torque_offset + TS_TORQUE_DEADBAND)){
+					int32_temp_current_target = 0;
+					if(uint32_torque_cumulated>0)uint32_torque_cumulated--;
+				}
+				else{
+					int32_temp_current_target = ts_target;
 				}
 
 
