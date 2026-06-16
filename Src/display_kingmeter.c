@@ -163,7 +163,7 @@ void KingMeter_Init (KINGMETER_t* KM_ctx)
     KM_ctx->Settings.PAS_RUN_Direction      = KM_PASDIR_FORWARD;
     KM_ctx->Settings.PAS_SCN_Tolerance      = (uint8_t) pas_tolerance;
     KM_ctx->Settings.PAS_N_Ratio            = 255;
-    KM_ctx->Settings.P11_Function           = 12;
+    KM_ctx->Settings.P11_Function           = 4;
     KM_ctx->Settings.HND_HL_ThrParam        = KM_HND_HL_NO;
     KM_ctx->Settings.HND_HF_ThrParam        = KM_HND_HF_NO;
     KM_ctx->Settings.SYS_SSP_SlowStart      = 1;

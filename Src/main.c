@@ -362,7 +362,7 @@ int main(void)
 	//initialize MS struct.
 	MS.hall_angle_detect_flag=1;
 	MS.Speed=128000;
-	MS.assist_level=127;
+	MS.assist_level=70;
 	MS.regen_level=7;
 	MS.i_q_setpoint = 0;
 	MS.i_d_setpoint = 0;
@@ -847,8 +847,6 @@ int main(void)
 
 #ifdef TS_MODE //torque-sensor mode
 				//calculate current target form torque, cadence and assist level
-				int32_t ts_torque_delta = (int32_t)ui16_torque - ui16_torque_offset;
-				uint8_t ts_pedaling = (ts_torque_delta > 8);
 				int32_t ts_coef = TS_COEF;
 #if (DISPLAY_TYPE & DISPLAY_TYPE_KINGMETER || DISPLAY_TYPE & DISPLAY_TYPE_DEBUG)
 				uint8_t ts_p11 = KM.Settings.P11_Function;
@@ -856,12 +854,16 @@ int main(void)
 				if(ts_p11 > 24) ts_p11 = 24;
 				ts_coef = 100 + ((int32_t)ts_p11 - 1) * 100;
 #endif
-				int32_temp_current_target = (ts_coef*(int32_t)(MS.assist_level)* ((uint32_torque_cumulated*PAS_IMP_PER_TURN_RECIP_MULTIPLIER)>>8)*(int32_t)(MS.Speed>>8)/uint32_PAS)>>8;
+				int32_t speed_floor = (MS.Speed>>8);
+				if(speed_floor < 39) speed_floor = 39;
+				int32_t pas_floor = uint32_PAS;
+				if(pas_floor < 1000) pas_floor = 1000;
+				int32_temp_current_target = (ts_coef*(int32_t)(MS.assist_level)* ((uint32_torque_cumulated*PAS_IMP_PER_TURN_RECIP_MULTIPLIER)>>8)*speed_floor/pas_floor)>>8;
 
 				//limit currest target to max value
 				if(int32_temp_current_target>PH_CURRENT_MAX) int32_temp_current_target = PH_CURRENT_MAX;
 				//set target to zero, if pedals are not turning
-				if(uint32_PAS_counter > PAS_TIMEOUT && !ts_pedaling){
+				if(uint32_PAS_counter > PAS_TIMEOUT){
 					int32_temp_current_target = 0;
 					if(uint32_torque_cumulated>0)uint32_torque_cumulated--; //ramp down cumulated torque value
 				}
@@ -1118,7 +1120,7 @@ int main(void)
 				if (i16_ph3_current_abs > i16_ph_current_abs) i16_ph_current_abs = i16_ph3_current_abs;
 
 				uint16_t ui16_speed_kmh = (uint16_t)((uint32_SPEEDx100_cumulated >> SPEEDFILTER) / 100);
-				sprintf_(buffer, "%d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d\r\n",
+				sprintf_(buffer, "%d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d\r\n",
 						i16_60deg_Hall_flag,
 						ui8_hall_state,
 						uint32_PAS,
@@ -1131,7 +1133,8 @@ int main(void)
 						ui16_torque,
 						ui16_throttle,
 						MS.Speed,
-						ui16_speed_kmh);
+						ui16_speed_kmh,
+						MS.assist_level);
 				// sprintf_(buffer, "%d, %d, %d, %d, %d, %d, %d\r\n",(uint16_t)adcData[0],(uint16_t)adcData[1],(uint16_t)adcData[2],(uint16_t)adcData[3],(uint16_t)(adcData[4]),(uint16_t)(adcData[5]),(uint16_t)(adcData[6])) ;
 				// sprintf_(buffer, "%d, %d, %d, %d, %d, %d\r\n",tic_array[0],tic_array[1],tic_array[2],tic_array[3],tic_array[4],tic_array[5]) ;
 				i=0;

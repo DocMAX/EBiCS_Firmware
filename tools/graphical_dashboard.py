@@ -48,6 +48,7 @@ FIELDS = [
     ("ui16_throttle", "Throttle", "throttle"),
     ("MS.Speed", "Speed", "speed"),
     ("ui16_speed_kmh", "Speed km/h", "speed_kmh"),
+    ("MS.assist_level", "Assist Level", "assist_level"),
 ]
 
 state_lock = threading.Lock()
