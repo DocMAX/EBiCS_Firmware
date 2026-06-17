@@ -110,6 +110,8 @@ uint16_t ui16_throttle;
 uint16_t ui16_torque;
 uint16_t ui16_throttle_offset = THROTTLE_OFFSET;
 uint16_t ui16_torque_offset = TORQUE_OFFSET;
+uint8_t ui8_torque_control_mode = 1;
+uint16_t ui16_torque_activation_threshold = 2000;
 uint16_t ui16_brake_adc;
 uint32_t ui32_throttle_cumulated;
 uint32_t ui32_torque_cumulated_raw;

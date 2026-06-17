@@ -25,6 +25,7 @@ import sys
 import time
 import os
 import signal
+import argparse
 
 SERIAL_PORT = "/dev/ttyUSB0"
 SERIAL_BAUD = 57600
@@ -59,17 +60,27 @@ signal.signal(signal.SIGINT, handle_signal)
 signal.signal(signal.SIGTERM, handle_signal)
 
 def main():
-    print(f"Reading {SERIAL_PORT} @ {SERIAL_BAUD}...")
-    print(f"Output: {OUTPUT_FILE}")
+    parser = argparse.ArgumentParser(description="TS_MODE debug log reader")
+    parser.add_argument("-o", "--output", default=OUTPUT_FILE, help="Output CSV file path")
+    parser.add_argument("-p", "--port", default=SERIAL_PORT, help="Serial port device")
+    parser.add_argument("-b", "--baud", type=int, default=SERIAL_BAUD, help="Serial baud rate")
+    args = parser.parse_args()
+
+    serial_port = args.port
+    serial_baud = args.baud
+    output_file = args.output
+
+    print(f"Reading {serial_port} @ {serial_baud}...")
+    print(f"Output: {output_file}")
     print("Press Ctrl+C to stop.\n")
 
     try:
-        ser = serial.Serial(SERIAL_PORT, SERIAL_BAUD, timeout=0)
+        ser = serial.Serial(serial_port, serial_baud, timeout=0)
     except Exception as e:
         print(f"Error opening serial port: {e}", file=sys.stderr)
         sys.exit(1)
 
-    csv_fp = open(OUTPUT_FILE, "w")
+    csv_fp = open(output_file, "w")
 
     buf = ""
     start_time = time.time()

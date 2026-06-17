@@ -99,13 +99,13 @@
 
 //---------------------------------------------------------------------
 //torquesensor settings
-#define TS_COEF 100
+#define TS_COEF 1200
 #define TS_MODE
 #define TQONAD1
 
 //---------------------------------------------------------------------
 //Display settings
-#define DISPLAY_TYPE DISPLAY_TYPE_KINGMETER_901U
+#define DISPLAY_TYPE DISPLAY_TYPE_DEBUG
 
 //---------------------------------------------------------------------
 //Regen settings
