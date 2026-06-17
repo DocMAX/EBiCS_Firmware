@@ -164,6 +164,7 @@ void KingMeter_Init (KINGMETER_t* KM_ctx)
     KM_ctx->Settings.PAS_SCN_Tolerance      = (uint8_t) pas_tolerance;
     KM_ctx->Settings.PAS_N_Ratio            = 255;
     KM_ctx->Settings.P11_Function           = 4;
+    KM_ctx->Settings.PushAssistCurrent      = 0;
     KM_ctx->Settings.HND_HL_ThrParam        = KM_HND_HL_NO;
     KM_ctx->Settings.HND_HF_ThrParam        = KM_HND_HF_NO;
     KM_ctx->Settings.SYS_SSP_SlowStart      = 1;
@@ -463,11 +464,12 @@ static void KM_901U_Service(KINGMETER_t* KM_ctx)
 									if(KM_ctx->Settings.P11_Function < 1)KM_ctx->Settings.P11_Function = 1;
 									if(KM_ctx->Settings.P11_Function > 24)KM_ctx->Settings.P11_Function = 24;
 									KM_ctx->Settings.P18_Function        = (KM_Message[6]>>7)&0x01; 	    // P18 (Byte 6, Bit 7) - throttle enable override
-     			                KM_ctx->Settings.P19_Function        = (KM_Message[6]>>6)&0x01; 	    // P19 (Byte 6, Bit 6) - autodetect trigger
-     			                if(KM_ctx->Settings.P19_Function) autodetect();
-     			                KM_ctx->Settings.Reverse               = (KM_Message[6]>>5)&0x01; 	    // set spinning direction (was P19 in old protocol)
-    			                KM_ctx->Settings.PAS_SCN_Tolerance   =  KM_Message[5];              // 2..9
-    			                KM_ctx->Settings.PAS_N_Ratio         =  KM_Message[6];              // 0..255
+      			                KM_ctx->Settings.P19_Function        = (KM_Message[6]>>6)&0x01; 	    // P19 (Byte 6, Bit 6) - autodetect trigger
+      			                if(KM_ctx->Settings.P19_Function) autodetect();
+      			                KM_ctx->Settings.Reverse               = (KM_Message[6]>>5)&0x01; 	    // set spinning direction
+     			                KM_ctx->Settings.PushAssistCurrent     = (KM_Message[6] & 0x30)>>4;		// P12 Push Assist 0/100/200/300mA
+     			                KM_ctx->Settings.PAS_SCN_Tolerance   =  KM_Message[5];              // 2..9
+     			                KM_ctx->Settings.PAS_N_Ratio         =  KM_Message[6] & 0x1F;      // 0..31
     			                KM_ctx->Settings.HND_HL_ThrParam     = (KM_Message[7] & 0x80) >> 7; // KM_HND_HL_NO / KM_HND_HL_YES
     			                KM_ctx->Settings.HND_HF_ThrParam     = (KM_Message[7] & 0x40) >> 6; // KM_HND_HF_NO / KM_HND_HF_YES
     			                KM_ctx->Settings.SYS_SSP_SlowStart   =  KM_Message[8];              // 1..9

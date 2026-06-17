@@ -840,7 +840,7 @@ int main(void)
 #if (DISPLAY_TYPE == DISPLAY_TYPE_KUNTENG)
 			else if(ui8_Walk_Assist_flag){int32_temp_current_target=(PUSHASSIST_CURRENT);} //Now working for Kunteng protocol.
 #else
-			else if(ui8_Push_Assist_flag)int32_temp_current_target=PUSHASSIST_CURRENT;
+			else if(ui8_Push_Assist_flag)int32_temp_current_target=(int32_t)KM.Settings.PushAssistCurrent*100;
 #endif
 			// last priority normal ride conditiones
 			else {
