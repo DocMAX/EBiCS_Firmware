@@ -849,32 +849,14 @@ int main(void)
 
 #ifdef TS_MODE //torque-sensor mode
 				//calculate current target form torque, cadence and assist level
-				int32_t ts_coef = TS_COEF;
-#if (DISPLAY_TYPE & DISPLAY_TYPE_KINGMETER || DISPLAY_TYPE & DISPLAY_TYPE_DEBUG)
-				uint8_t ts_p11 = KM.Settings.P11_Function;
-				if(ts_p11 < 1) ts_p11 = 1;
-				if(ts_p11 > 24) ts_p11 = 24;
-				ts_coef = 100 + ((int32_t)ts_p11 - 1) * 100;
-#endif
-				int32_t speed_floor = (MS.Speed>>8);
-				if(speed_floor < 39) speed_floor = 39;
-				int32_t pas_floor = uint32_PAS;
-				if(pas_floor < 1000) pas_floor = 1000;
-				int32_t ts_target = (ts_coef*(int32_t)(MS.assist_level)* ((uint32_torque_cumulated*PAS_IMP_PER_TURN_RECIP_MULTIPLIER)>>8)*speed_floor/pas_floor)>>8;
+				int32_temp_current_target = (TS_COEF*(int32_t)(MS.assist_level)* ((uint32_torque_cumulated*PAS_IMP_PER_TURN_RECIP_MULTIPLIER)>>8)/uint32_PAS)>>8; // >>8 aus KM5S-Protokoll Assistlevel 0..255
 
 				//limit currest target to max value
-				if(ts_target>PH_CURRENT_MAX) ts_target = PH_CURRENT_MAX;
+				if(int32_temp_current_target>PH_CURRENT_MAX) int32_temp_current_target = PH_CURRENT_MAX;
 				//set target to zero, if pedals are not turning
-				if(uint32_PAS_counter > TS_PEDAL_RELEASE_TIMEOUT){
+				if(uint32_PAS_counter > PAS_TIMEOUT){
 					int32_temp_current_target = 0;
-					if(uint32_torque_cumulated>0)uint32_torque_cumulated--;
-				}
-				else if(uint32_PAS_counter > PAS_TIMEOUT && ui16_torque < (ui16_torque_offset + TS_TORQUE_DEADBAND)){
-					int32_temp_current_target = 0;
-					if(uint32_torque_cumulated>0)uint32_torque_cumulated--;
-				}
-				else{
-					int32_temp_current_target = ts_target;
+					if(uint32_torque_cumulated>0)uint32_torque_cumulated--; //ramp down cumulated torque value
 				}
 
 

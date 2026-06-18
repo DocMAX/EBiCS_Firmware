@@ -67,9 +67,7 @@
 //#define DIRDET
 #define FRAC_HIGH 30
 #define FRAC_LOW 15
-#define PAS_TIMEOUT 500
-#define TS_PEDAL_RELEASE_TIMEOUT 1500
-#define TS_TORQUE_DEADBAND 25
+#define PAS_TIMEOUT 1000
 #define RAMP_END 1200
 #define PAS_IMP_PER_TURN 32
 

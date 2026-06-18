@@ -64,6 +64,7 @@ def main():
     parser.add_argument("-o", "--output", default=OUTPUT_FILE, help="Output CSV file path")
     parser.add_argument("-p", "--port", default=SERIAL_PORT, help="Serial port device")
     parser.add_argument("-b", "--baud", type=int, default=SERIAL_BAUD, help="Serial baud rate")
+    parser.add_argument("-l", "--live", action="store_true", help="Enable live console output")
     args = parser.parse_args()
 
     serial_port = args.port
@@ -84,6 +85,7 @@ def main():
 
     buf = ""
     start_time = time.time()
+    last_row = None
 
     try:
         while running:
@@ -113,11 +115,18 @@ def main():
                 for (field_label, field_key), val in zip(FIELDS, vals):
                     row[field_key] = val
 
+                # Skip duplicate rows (ignore timestamp)
+                row_data = tuple(row[k] for k in row if k != "timestamp")
+                if row_data == last_row:
+                    continue
+                last_row = row_data
+
+                # Write CSV
                 csv_fp.write(", ".join(f"{k}={v}" for k, v in row.items()) + "\n")
                 csv_fp.flush()
 
-                # Live preview (every 50 lines)
-                if int(row["timestamp"].replace(".", "")) % 50000 < 1000:
+                # Live console output only with -l flag
+                if args.live:
                     print(f"t={row['timestamp']}s  PAS={row['pas']:>6d}  "
                           f"Torque={row['torque']:>5d}  Speed={row['speed']:>6d}  "
                           f"Target={row['temp_current_target']:>6d}  Iq={row['iq']:>6d}  "
@@ -127,8 +136,8 @@ def main():
     finally:
         csv_fp.close()
         ser.close()
-        print(f"\nLog saved to {OUTPUT_FILE}")
-        print(f"Total lines: {sum(1 for _ in open(OUTPUT_FILE)) - 1}")
+        print(f"\nLog saved to {output_file}")
+        print(f"Total lines: {sum(1 for _ in open(output_file)) - 1}")
 
 if __name__ == "__main__":
     main()

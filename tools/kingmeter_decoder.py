@@ -16,7 +16,6 @@ Commands:
     P01-P19 parameter mapping (from display documentation, sorted by payload byte order):
       Byte4  bit7 = PAS_DIR (P01 not in payload)
       Byte4  bit6 = P17
-      Byte4  bits0-4 = P11 (PAS Sensitivity 1..24)
       Byte5        = P13 (PAS_MagType 5/8/12)
       Byte6  bit7 = P18 (Throttle)
       Byte6  bit6 = P19 (Auto)
@@ -89,7 +88,6 @@ def decode_settings(data: bytes, prev_data: bytes = None) -> str:
         lines.append(f"  ─── P01-P19 Parameters ───")
         lines.append(f"  P03 PAS_Dir:       {'FWD' if pas_dir == 0 else 'BWD'}  (payload[0] bit 7)")
         lines.append(f"  P17 P17:           {p17}  (payload[0] bit 6)")
-        lines.append(f"  P11 PAS_Sens:      {b4 & 0x1F}  (payload[0] bits 0-4, 1..24)")
         lines.append(f"  P13 PAS_MagType:   {pas_tolerance}  (payload[1] | 5/8/12)")
         lines.append(f"  P12 PAS_StartStr:  {((b6 >> 5) & 0x03)}  (payload[2] bits 5-6, 0-3)")
         lines.append(f"  P05 PAS_Level:     {pas_n_ratio}  (payload[2] bits 4-0)")
@@ -112,7 +110,7 @@ def decode_settings(data: bytes, prev_data: bytes = None) -> str:
         byte_val = payload[i]
         byte_name = ""
         if i == 0:
-            byte_name = "  (PAS_DIR bit7, P17 bit6, P11 bits 0-4)"
+            byte_name = "  (PAS_DIR bit7, P17 bit6, rest bits 5-0)"
         elif i == 1:
             byte_name = "  (PAS_SCN_Tolerance)"
         elif i == 2:
@@ -324,7 +322,7 @@ def print_dashboard(op_data, settings_data, direct_data, timestamp, counts):
     clear_screen()
     print(f"King-Meter 901U Protocol Decoder  [DASHBOARD]  Press Ctrl+C to quit")
     print(f"P01-Backlight  P02-MileUnit  P03-VoltClass  P04-AutoOff  P05-PAS_Level  P06-WheelSize  P07-MotorMag  P08-SpeedLim(0-41kmh)")
-    print(f"P09-StartMode  P10-DriveMode  P11-PASSens  P12-PAS_StartStr  P13-PASMagType  P14-CurLim  P15  P16-ODOClear")
+    print(f"P09-StartMode  P10-DriveMode  P12-PAS_StartStr  P13-PASMagType  P14-CurLim  P15  P16-ODOClear")
     print(f"{'='*60}")
     print(f"  Time: {timestamp}  |  Op={counts['op']}  Settings={counts['settings']}  Direct={counts['direct']}  Total={counts['total']}")
     print(f"{'='*60}")
@@ -401,7 +399,6 @@ def decode_dashboard_settings(data: bytes) -> str:
         
         pas_dir = (b4 >> 7) & 1
         p17 = (b4 >> 6) & 1
-        p11 = b4 & 0x1F
         pas_tolerance = b5
         p18 = (b6 >> 7) & 1
         p19 = (b6 >> 6) & 1
@@ -418,7 +415,6 @@ def decode_dashboard_settings(data: bytes) -> str:
         lines.append("  ─── Settings P07-P19 (sorted) ───")
         lines.append(f"  P07 PAS_Level:      {pas_n_ratio}  (payload[2] bits 4-0)")
         lines.append(f"  P08 SpeedLim:       {payload[6] if len(payload) >= 7 else '??'}  (payload[6], 0..41km/h)")
-        lines.append(f"  P11 PAS_Sens:       {p11}  (payload[0] bits 0-4, 1..24)")
         lines.append(f"  P12 PAS_StartStr:   {p12}  (payload[2] bits 5-6, 0-3)")
         lines.append(f"  P13 PAS_MagType:    {pas_tolerance}  (payload[1] | 5/8/12)")
         lines.append(f"  P14 CurLim:         {cur_limit}mA  (payload[4] bits 0-5 | NICHT im Code)")
