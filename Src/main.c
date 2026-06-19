@@ -111,6 +111,8 @@ uint16_t ui16_throttle;
 uint16_t ui16_torque;
 uint16_t ui16_throttle_offset = THROTTLE_OFFSET;
 uint16_t ui16_torque_offset = TORQUE_OFFSET;
+uint8_t ui8_torque_control_mode = 1;
+uint16_t ui16_torque_activation_threshold = 2000;
 uint16_t ui16_brake_adc;
 uint32_t ui32_throttle_cumulated;
 uint32_t ui32_torque_cumulated_raw;
@@ -841,7 +843,7 @@ int main(void)
 #if (DISPLAY_TYPE == DISPLAY_TYPE_KUNTENG)
 			else if(ui8_Walk_Assist_flag){int32_temp_current_target=(PUSHASSIST_CURRENT);} //Now working for Kunteng protocol.
 #else
-			else if(ui8_Push_Assist_flag)int32_temp_current_target=(MS.assist_level*PUSHASSIST_CURRENT)>>8; //does not work for BAFANG
+			else if(ui8_Push_Assist_flag)int32_temp_current_target=(int32_t)KM.Settings.PushAssistCurrent*100;
 #endif
 			// last priority normal ride conditiones
 			else {
@@ -915,6 +917,11 @@ int main(void)
 				uint16_mapped_throttle = map(ui16_throttle, ui16_throttle_offset, THROTTLE_MAX, 0,PH_CURRENT_MAX);
 
 #endif //end NTCE
+
+// P18 Function from King-Meter display: 0 = throttle disabled, 1 = throttle enabled
+#if (DISPLAY_TYPE & DISPLAY_TYPE_KINGMETER)
+				if(!KM.Settings.P18_Function) uint16_mapped_throttle = 0;
+#endif
 
 #ifndef TS_MODE //normal PAS Mode
 

@@ -64,20 +64,22 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 typedef struct
 {
     // Parameters received from display in setting mode:
-    uint16_t WheelSize_mm;              // Unit: 1mm
-    uint8_t  PAS_RUN_Direction;         // KM_PASDIR_FORWARD / KM_PASDIR_BACKWARD
-    uint8_t  P18_Function;              // P18 (Byte 6, Bit 7) - throttle enable
-    uint8_t  P19_Function;              // P19 (Byte 6, Bit 6) - autodetect trigger
-    uint8_t  PAS_SCN_Tolerance;         // Number of PAS signals to start the motor
-    uint8_t  PAS_N_Ratio;               // 0..255 PAS ratio
-    uint8_t  HND_HL_ThrParam;           // KM_HND_HL_NO / KM_HND_HL_YES
-    uint8_t  HND_HF_ThrParam;           // KM_HND_HF_NO / KM_HND_HF_YES
-    uint8_t  SYS_SSP_SlowStart;         // 1..4 Level of soft ramping at start
-    uint8_t  SPS_SpdMagnets;            // Number of magnets of speedsensor
-    uint16_t VOL_1_UnderVolt_x10;       // Unit: 0.1V
+    uint16_t WheelSize_mm;              // P06 WheelSize (Unit: mm)
+    uint8_t  PAS_RUN_Direction;         // PAS_DIR (bit7 payload[0])
+    uint8_t  P18_Function;              // P18 Throttle enable (bit7 payload[2])
+    uint8_t  P19_Function;              // P19 Auto (bit6 payload[2])
+    uint8_t  PAS_SCN_Tolerance;         // P02 PAS_Tolerance / SCA (payload[1])
+    uint8_t  PAS_N_Ratio;               // P05 PAS_Level or PAS_N_Ratio (bits4-0 payload[2])
+    uint8_t  HND_HL_ThrParam;           // HND_HL_Thr (bit7 payload[3])
+    uint8_t  HND_HF_ThrParam;           // HND_HF_Thr (bit6 payload[3])
+    uint8_t  SYS_SSP_SlowStart;         // P04 Auto-Off Time / SlowStart (payload[4])
+    uint8_t  SPS_SpdMagnets;            // P07 Motor Magnets (payload[6] or payload[9] in C)
+    uint16_t VOL_1_UnderVolt_x10;       // P09 Under-Voltage (payload[9:11])
 
-    uint8_t  P17_Function;              // P17 (Byte 4, Bit 6)
-    uint8_t  Reverse;                    // Reverse (Byte 6, Bit 5) - spinning direction
+    uint8_t  P17_Function;              // P17 (bit6 payload[0])
+    uint8_t  Reverse;                    // Reverse (bit5 payload[2])
+    uint8_t  SettingsByte5;              // P10+P12_alt+P13 (payload[5])
+    uint8_t  PushAssistCurrent; 		// P12 Push Assist 0/100/200/300mA (bits5-4 payload[6])
 
 }RX_SETTINGS_t;
 
