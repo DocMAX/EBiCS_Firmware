@@ -55,6 +55,7 @@
 #include "FOC.h"
 #include "config.h"
 #include "eeprom.h"
+#include <stdlib.h>
 
 
 #if (DISPLAY_TYPE & DISPLAY_TYPE_KINGMETER|| DISPLAY_TYPE & DISPLAY_TYPE_DEBUG)
@@ -188,7 +189,7 @@ q31_t q31_u_d_temp=0;
 q31_t q31_u_q_temp=0;
 int16_t i16_sinus=0;
 int16_t i16_cosinus=0;
-char buffer[100];
+char buffer[200];
 char char_dyn_adc_state_old=1;
 const uint8_t assist_factor[10]={0, 51, 102, 153, 204, 255, 255, 255, 255, 255};
 const uint8_t assist_profile[2][6]= {	{0,10,20,30,45,48},
@@ -362,7 +363,7 @@ int main(void)
 	//initialize MS struct.
 	MS.hall_angle_detect_flag=1;
 	MS.Speed=128000;
-	MS.assist_level=127;
+	MS.assist_level=70;
 	MS.regen_level=7;
 	MS.i_q_setpoint = 0;
 	MS.i_d_setpoint = 0;
@@ -1096,17 +1097,29 @@ int main(void)
 #if (DISPLAY_TYPE == DISPLAY_TYPE_DEBUG && !defined(FAST_LOOP_LOG))
 				//print values for debugging
 
-				sprintf_(buffer, "%d, %d, %d, %d, %d, %d, %d, %d, %d, %d\r\n",
-						i16_60deg_Hall_flag,
-						ui8_hall_state,
-						uint32_PAS,
-						MS.Battery_Current,
-						int32_temp_current_target ,
-						MS.i_q,
-						MS.u_abs,
-						SystemState,
-						ui16_torque,
-						ui16_throttle);
+			i16_ph3_current = -i16_ph1_current - i16_ph2_current;
+			int16_t i16_ph_current_abs = iabs(i16_ph1_current);
+			int16_t i16_ph2_current_abs = iabs(i16_ph2_current);
+			int16_t i16_ph3_current_abs = iabs(i16_ph3_current);
+			if (i16_ph2_current_abs > i16_ph_current_abs) i16_ph_current_abs = i16_ph2_current_abs;
+			if (i16_ph3_current_abs > i16_ph_current_abs) i16_ph_current_abs = i16_ph3_current_abs;
+
+			uint16_t ui16_speed_kmh = (uint16_t)((uint32_SPEEDx100_cumulated >> SPEEDFILTER) / 100);
+			sprintf_(buffer, "%d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d\r\n",
+					i16_60deg_Hall_flag,
+					ui8_hall_state,
+					uint32_PAS,
+					MS.Battery_Current,
+					i16_ph_current_abs,
+					int32_temp_current_target ,
+					MS.i_q,
+					MS.u_abs,
+					SystemState,
+					ui16_torque,
+					ui16_throttle,
+					MS.Speed,
+					ui16_speed_kmh,
+					MS.assist_level);
 				// sprintf_(buffer, "%d, %d, %d, %d, %d, %d, %d\r\n",(uint16_t)adcData[0],(uint16_t)adcData[1],(uint16_t)adcData[2],(uint16_t)adcData[3],(uint16_t)(adcData[4]),(uint16_t)(adcData[5]),(uint16_t)(adcData[6])) ;
 				// sprintf_(buffer, "%d, %d, %d, %d, %d, %d\r\n",tic_array[0],tic_array[1],tic_array[2],tic_array[3],tic_array[4],tic_array[5]) ;
 				i=0;
@@ -1684,10 +1697,16 @@ int main(void)
 		HAL_GPIO_Init(Brake_GPIO_Port, &GPIO_InitStruct);
 
 
-		/*Configure GPIO pins : Speed_EXTI5_Pin PAS_EXTI8_Pin */
-		GPIO_InitStruct.Pin = Speed_EXTI5_Pin|PAS_EXTI8_Pin;
-		GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING_FALLING;
+		/*Configure GPIO pin : Speed_EXTI5_Pin */
+		GPIO_InitStruct.Pin = Speed_EXTI5_Pin;
+		GPIO_InitStruct.Mode = GPIO_MODE_IT_FALLING;
 		GPIO_InitStruct.Pull = GPIO_PULLUP;
+		HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+
+		/*Configure GPIO pin : PAS_EXTI8_Pin */
+		GPIO_InitStruct.Pin = PAS_EXTI8_Pin;
+		GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING_FALLING;
+		GPIO_InitStruct.Pull = GPIO_NOPULL;
 		HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
 
