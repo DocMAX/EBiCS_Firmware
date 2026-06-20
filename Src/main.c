@@ -850,7 +850,18 @@ int main(void)
 
 #ifdef TS_MODE //torque-sensor mode
 				//calculate current target form torque, cadence and assist level
-				int32_temp_current_target = (TS_COEF*(int32_t)(MS.assist_level)* ((uint32_torque_cumulated*PAS_IMP_PER_TURN_RECIP_MULTIPLIER)>>8)/uint32_PAS)>>8; // >>8 aus KM5S-Protokoll Assistlevel 0..255
+				int32_temp_current_target = (TS_COEF*(int32_t)(MS.assist_level)* ((uint32_torque_cumulated*PAS_IMP_PER_TURN_RECIP_MULTIPLIER)>>8)/uint32_PAS)>>8;
+
+				//reduce current at higher speeds for smoother ride feel
+				uint16_t speed_kmh = (uint16_t)(uint32_SPEEDx100_cumulated >> SPEEDFILTER) / 100;
+				uint16_t speed_factor;
+				if (speed_kmh <= TS_SPEED_FACTOR_MIDPOINT) {
+					speed_factor = 256 - ((speed_kmh * (256 - 200)) / TS_SPEED_FACTOR_MIDPOINT);
+				} else {
+					speed_factor = 200 - (((speed_kmh - TS_SPEED_FACTOR_MIDPOINT) * (200 - TS_SPEED_FACTOR_MIN)) / (SPEEDLIMIT - TS_SPEED_FACTOR_MIDPOINT));
+				}
+				if (speed_factor < TS_SPEED_FACTOR_MIN) speed_factor = TS_SPEED_FACTOR_MIN;
+				int32_temp_current_target = (int32_temp_current_target * speed_factor) >> 8;
 
 				//limit currest target to max value
 				if(int32_temp_current_target>PH_CURRENT_MAX) int32_temp_current_target = PH_CURRENT_MAX;

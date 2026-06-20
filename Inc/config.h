@@ -100,6 +100,8 @@
 #define TS_COEF 1200
 #define TS_MODE
 #define TQONAD1
+#define TS_SPEED_FACTOR_MIN 130
+#define TS_SPEED_FACTOR_MIDPOINT 18
 
 //---------------------------------------------------------------------
 //Display settings
