@@ -79,7 +79,8 @@ typedef struct
     uint8_t  P17_Function;              // P17 (bit6 payload[0])
     uint8_t  Reverse;                    // Reverse (bit5 payload[2])
     uint8_t  SettingsByte5;              // P10+P12_alt+P13 (payload[5])
-    uint8_t  PushAssistCurrent; 		// P12 Push Assist 0/100/200/300mA (bits5-4 payload[6])
+    uint8_t  P12_Value;                  // P12 raw value (0-3)
+    uint8_t  P11_Value;                  // P11 Speed Factor Midpoint raw (1-24)
 
 }RX_SETTINGS_t;
 

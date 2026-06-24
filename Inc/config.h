@@ -97,15 +97,23 @@
 
 //---------------------------------------------------------------------
 //torquesensor settings
-#define TS_COEF 1200
+#define TS_COEF 2400
 #define TS_MODE
 #define TQONAD1
-#define TS_SPEED_FACTOR_MIN 130
-#define TS_SPEED_FACTOR_MIDPOINT 18
+#define TS_SPEED_FACTOR_MIDPOINT_SPEED 18
+	// Ab welcher Geschwindigkeit (km/h) die Motorunterstützung spürbar schwächer wird.
+	// Unterhalb dieser Geschwindigkeit bleibt die Unterstützung fast voll (nur leicht auf 78% reduziert).
+	// Oberhalb fällt sie linear auf den Wert von BOTTOM ab.
+	// Einstellbar mit P11 (KingMeter): Wert 1 = 5 km/h (Abschwächung beginnt sehr früh), Wert 31 = 30 km/h (volle Kraft fast bis 30 km/h).
+#define TS_SPEED_FACTOR_BOTTOM 130
+	// Wie stark die Motorunterstützung bei hoher Geschwindigkeit abgeregelt wird.
+	// 256 = volle Stärke (100%). Je niedriger dieser Wert, desto weniger Schub gibt der Motor bei hohem Tempo.
+	// Beispiel: 50 = nur noch 20% der normalen Kraft. 200 = noch 78% Kraft.
+	// Einstellbar mit P12 (KingMeter): Stufe 0 = 50 (sehr stark abgeregelt), Stufe 3 = 200 (kaum abgeregelt).
 
 //---------------------------------------------------------------------
 //Display settings
-#define DISPLAY_TYPE DISPLAY_TYPE_DEBUG
+#define DISPLAY_TYPE DISPLAY_TYPE_KINGMETER_901U
 
 //---------------------------------------------------------------------
 //Regen settings

@@ -163,7 +163,8 @@ void KingMeter_Init (KINGMETER_t* KM_ctx)
     KM_ctx->Settings.PAS_RUN_Direction      = KM_PASDIR_FORWARD;
     KM_ctx->Settings.PAS_SCN_Tolerance      = (uint8_t) pas_tolerance;
     KM_ctx->Settings.PAS_N_Ratio            = 255;
-    KM_ctx->Settings.PushAssistCurrent      = 0;
+    KM_ctx->Settings.P12_Value      = 2;
+    KM_ctx->Settings.P11_Value              = 17;
     KM_ctx->Settings.HND_HL_ThrParam        = KM_HND_HL_NO;
     KM_ctx->Settings.HND_HF_ThrParam        = KM_HND_HF_NO;
     KM_ctx->Settings.SYS_SSP_SlowStart      = 1;
@@ -457,23 +458,24 @@ static void KM_901U_Service(KINGMETER_t* KM_ctx)
     			            	if(!CheckSum) //low-byte and high-byte
     			            		{
 
-									KM_ctx->Settings.PAS_RUN_Direction   = (KM_Message[4] & 0x80) >> 7; // KM_PASDIR_FORWARD / KM_PASDIR_BACKWARD
-									KM_ctx->Settings.P17_Function        = (KM_Message[4] & 0x40) >> 6; // P17 (Byte 4, Bit 6)
-									KM_ctx->Settings.P18_Function        = (KM_Message[6]>>7)&0x01; 	    // P18 (Byte 6, Bit 7) - throttle enable override
-      			                KM_ctx->Settings.P19_Function        = (KM_Message[6]>>6)&0x01; 	    // P19 (Byte 6, Bit 6) - autodetect trigger
-      			                if(KM_ctx->Settings.P19_Function) autodetect();
-      			                KM_ctx->Settings.Reverse               = (KM_Message[6]>>5)&0x01; 	    // set spinning direction
-     			                KM_ctx->Settings.PushAssistCurrent     = (KM_Message[6] & 0x30)>>4;		// P12 Push Assist 0/100/200/300mA
-     			                KM_ctx->Settings.PAS_SCN_Tolerance   =  KM_Message[5];              // 2..9
-     			                KM_ctx->Settings.PAS_N_Ratio         =  KM_Message[6] & 0x1F;      // 0..31
-    			                KM_ctx->Settings.HND_HL_ThrParam     = (KM_Message[7] & 0x80) >> 7; // KM_HND_HL_NO / KM_HND_HL_YES
-    			                KM_ctx->Settings.HND_HF_ThrParam     = (KM_Message[7] & 0x40) >> 6; // KM_HND_HF_NO / KM_HND_HF_YES
-    			                KM_ctx->Settings.SYS_SSP_SlowStart   =  KM_Message[8];              // 1..9
-    			                KM_ctx->Settings.SPS_SpdMagnets      =  KM_Message[9];             // 1..4
-    			                KM_ctx->Settings.VOL_1_UnderVolt_x10 = (((uint16_t) KM_Message[11])<<8) | KM_Message[11];
-    			                KM_ctx->Settings.WheelSize_mm        = (((uint16_t) KM_Message[12])<<8) | KM_Message[13];
-    			    	        KM_ctx->Rx.SPEEDMAX_Limit          		= KM_Message[11];
-    			    	        KM_ctx->Rx.CUR_Limit_mA                 = (KM_Message[8]&0x3F)*500;
+KM_ctx->Settings.PAS_RUN_Direction   = (KM_Message[4] & 0x80) >> 7; // KM_PASDIR_FORWARD / KM_PASDIR_BACKWARD
+								KM_ctx->Settings.P17_Function        = (KM_Message[4] & 0x40) >> 6;  // P17 (Byte 4, Bit 6)
+								KM_ctx->Settings.P11_Value             = KM_Message[4] & 0x1F;        // P11 (Byte 4, bits 0-4, 0-31)
+								KM_ctx->Settings.P18_Function         = (KM_Message[6]>>7)&0x01; 	    // P18 (Byte 6, Bit 7)
+								KM_ctx->Settings.P19_Function         = (KM_Message[6]>>6)&0x01; 	    // P19 (Byte 6, Bit 6)
+								if(KM_ctx->Settings.P19_Function) autodetect();
+								KM_ctx->Settings.Reverse               = (KM_Message[6]>>5)&0x01; 	    // set spinning direction
+								KM_ctx->Settings.P12_Value     = (KM_Message[6] & 0x60)>>5;		// P12 raw value (0-3)
+      			                KM_ctx->Settings.PAS_SCN_Tolerance   =  KM_Message[5];              // 2..9
+      			                KM_ctx->Settings.PAS_N_Ratio         =  KM_Message[6] & 0x1F;      // 0..31
+			                KM_ctx->Settings.HND_HL_ThrParam     = (KM_Message[7] & 0x80) >> 7; // KM_HND_HL_NO / KM_HND_HL_YES
+			                KM_ctx->Settings.HND_HF_ThrParam     = (KM_Message[7] & 0x40) >> 6; // KM_HND_HF_NO / KM_HND_HF_YES
+			                KM_ctx->Settings.SYS_SSP_SlowStart   =  KM_Message[8];              // 1..9
+			                KM_ctx->Settings.SPS_SpdMagnets      =  KM_Message[9];             // 1..4
+			                KM_ctx->Settings.VOL_1_UnderVolt_x10 = (((uint16_t) KM_Message[11])<<8) | KM_Message[11];
+			                KM_ctx->Settings.WheelSize_mm        = (((uint16_t) KM_Message[12])<<8) | KM_Message[13];
+			    	        KM_ctx->Rx.SPEEDMAX_Limit         	= KM_Message[11];
+			    	        KM_ctx->Rx.CUR_Limit_mA                 = (KM_Message[8]&0x3F)*500;
 
      			    	        kingmeter_update();
     			    	        //if(KM_ctx->Rx.CUR_Limit_mA==21500)autodetect();

@@ -15,7 +15,7 @@ The P12 parameter is received from the display during the **Settings mode** (com
 - **Code Location**: `Src/display_kingmeter.c:467`
 
 ```c
-KM_ctx->Settings.PushAssistCurrent = (KM_Message[6] & 0x30)>>4;
+KM_ctx->Settings.P12_Value = (KM_Message[6] & 0x30)>>4;
 ```
 
 The value is masked with `0x30` (binary: `00110000`) and then shifted right by 4 bits to obtain a 2-bit value representing:
@@ -36,7 +36,7 @@ The settings message uses command `0x53` with the following relevant payload str
 | 6 | P18_Function | Bit 7: P18 Throttle enable |
 | 6 | P19_Function | Bit 6: P19 Auto detect |
 | 6 | Reverse | Bit 5: Reverse setting |
-| 6 | PushAssistCurrent | Bits 5-4: P12 Push Assist current |
+| 6 | P12_Value | Bits 5-4: P12 Push Assist current |
 | 6 | PAS_N_Ratio | Bits 0-4: P05 PAS Level |
 
 ## Protocol Context

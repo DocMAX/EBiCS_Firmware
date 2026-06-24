@@ -138,8 +138,15 @@ volatile uint8_t ui8_adc_inj_flag=0;
 volatile uint8_t ui8_adc_regular_flag=0;
 uint8_t ui8_speedcase=0;
 uint8_t ui8_speedfactor=0;
-int8_t i8_direction= REVERSE; //for permanent reverse direction
-int8_t i8_reverse_flag = 1; //for temporaribly reverse direction
+
+uint8_t ts_speed_factor_bottom = TS_SPEED_FACTOR_BOTTOM;
+
+#undef TS_SPEED_FACTOR_BOTTOM
+
+uint8_t ts_speed_factor_midpoint_speed = TS_SPEED_FACTOR_MIDPOINT_SPEED;
+
+#undef TS_SPEED_FACTOR_MIDPOINT_SPEED
+
 uint8_t ui8_KV_detect_flag = 0; //for getting the KV of the motor after auto angle detect
 uint16_t ui16_KV_detect_counter = 0; //for getting timing of the KV detect
 int16_t ui32_KV = 0;
@@ -170,6 +177,8 @@ q31_t q31_angle_per_tic = 0;
 
 uint8_t ui8_UART_Counter=0;
 int8_t i8_recent_rotor_direction=1;
+int8_t i8_direction=1;
+int8_t i8_reverse_flag=1;
 int16_t i16_hall_order=1;
 uint16_t ui16_erps=0;
 
@@ -843,7 +852,7 @@ int main(void)
 #if (DISPLAY_TYPE == DISPLAY_TYPE_KUNTENG)
 			else if(ui8_Walk_Assist_flag){int32_temp_current_target=(PUSHASSIST_CURRENT);} //Now working for Kunteng protocol.
 #else
-			else if(ui8_Push_Assist_flag)int32_temp_current_target=(int32_t)KM.Settings.PushAssistCurrent*100;
+			else if(ui8_Push_Assist_flag)int32_temp_current_target=(int32_t)PUSHASSIST_CURRENT;
 #endif
 			// last priority normal ride conditiones
 			else {
@@ -855,12 +864,12 @@ int main(void)
 				//reduce current at higher speeds for smoother ride feel
 				uint16_t speed_kmh = (uint16_t)(uint32_SPEEDx100_cumulated >> SPEEDFILTER) / 100;
 				uint16_t speed_factor;
-				if (speed_kmh <= TS_SPEED_FACTOR_MIDPOINT) {
-					speed_factor = 256 - ((speed_kmh * (256 - 200)) / TS_SPEED_FACTOR_MIDPOINT);
+				if (speed_kmh <= ts_speed_factor_midpoint_speed) {
+					speed_factor = 256 - ((speed_kmh * (256 - 200)) / ts_speed_factor_midpoint_speed);
 				} else {
-					speed_factor = 200 - (((speed_kmh - TS_SPEED_FACTOR_MIDPOINT) * (200 - TS_SPEED_FACTOR_MIN)) / (SPEEDLIMIT - TS_SPEED_FACTOR_MIDPOINT));
+					speed_factor = 200 - (((speed_kmh - ts_speed_factor_midpoint_speed) * (200 - ts_speed_factor_bottom)) / (SPEEDLIMIT - ts_speed_factor_midpoint_speed));
 				}
-				if (speed_factor < TS_SPEED_FACTOR_MIN) speed_factor = TS_SPEED_FACTOR_MIN;
+				if (speed_factor < ts_speed_factor_bottom) speed_factor = ts_speed_factor_bottom;
 				int32_temp_current_target = (int32_temp_current_target * speed_factor) >> 8;
 
 				//limit currest target to max value
@@ -2187,6 +2196,10 @@ int main(void)
 		//    MP.speedLimit=KM.Rx.SPEEDMAX_Limit;
 		//    MP.battery_current_max = KM.Rx.CUR_Limit_mA;
 
+#if (DISPLAY_TYPE != DISPLAY_TYPE_DEBUG)
+		ts_speed_factor_midpoint_speed = map(KM.Settings.P11_Value, 1, 31, 5, 30);
+		ts_speed_factor_bottom = map(KM.Settings.P12_Value, 0, 3, 50, 200);
+#endif
 
 
 	}
