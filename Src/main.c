@@ -139,14 +139,6 @@ volatile uint8_t ui8_adc_regular_flag=0;
 uint8_t ui8_speedcase=0;
 uint8_t ui8_speedfactor=0;
 
-uint8_t ts_speed_factor_bottom = TS_SPEED_FACTOR_BOTTOM;
-
-#undef TS_SPEED_FACTOR_BOTTOM
-
-uint8_t ts_speed_factor_midpoint_speed = TS_SPEED_FACTOR_MIDPOINT_SPEED;
-
-#undef TS_SPEED_FACTOR_MIDPOINT_SPEED
-
 uint8_t ui8_KV_detect_flag = 0; //for getting the KV of the motor after auto angle detect
 uint16_t ui16_KV_detect_counter = 0; //for getting timing of the KV detect
 int16_t ui32_KV = 0;
@@ -859,18 +851,7 @@ int main(void)
 
 #ifdef TS_MODE //torque-sensor mode
 				//calculate current target form torque, cadence and assist level
-				int32_temp_current_target = (TS_COEF*(int32_t)(MS.assist_level)* ((uint32_torque_cumulated*PAS_IMP_PER_TURN_RECIP_MULTIPLIER)>>8)/uint32_PAS)>>8;
-
-				//reduce current at higher speeds for smoother ride feel
-				uint16_t speed_kmh = (uint16_t)(uint32_SPEEDx100_cumulated >> SPEEDFILTER) / 100;
-				uint16_t speed_factor;
-				if (speed_kmh <= ts_speed_factor_midpoint_speed) {
-					speed_factor = 256 - ((speed_kmh * (256 - 200)) / ts_speed_factor_midpoint_speed);
-				} else {
-					speed_factor = 200 - (((speed_kmh - ts_speed_factor_midpoint_speed) * (200 - ts_speed_factor_bottom)) / (SPEEDLIMIT - ts_speed_factor_midpoint_speed));
-				}
-				if (speed_factor < ts_speed_factor_bottom) speed_factor = ts_speed_factor_bottom;
-				int32_temp_current_target = (int32_temp_current_target * speed_factor) >> 8;
+				int32_temp_current_target = (TS_COEF*(int32_t)(MS.assist_level)* ((uint32_torque_cumulated*PAS_IMP_PER_TURN_RECIP_MULTIPLIER)>>8)/uint32_PAS)>>8; // >>8 aus KM5S-Protokoll Assistlevel 0..255
 
 				//limit currest target to max value
 				if(int32_temp_current_target>PH_CURRENT_MAX) int32_temp_current_target = PH_CURRENT_MAX;
@@ -2196,10 +2177,6 @@ int main(void)
 		//    MP.speedLimit=KM.Rx.SPEEDMAX_Limit;
 		//    MP.battery_current_max = KM.Rx.CUR_Limit_mA;
 
-#if (DISPLAY_TYPE != DISPLAY_TYPE_DEBUG)
-		ts_speed_factor_midpoint_speed = map(KM.Settings.P11_Value, 1, 31, 5, 30);
-		ts_speed_factor_bottom = map(KM.Settings.P12_Value, 0, 3, 50, 200);
-#endif
 
 
 	}
